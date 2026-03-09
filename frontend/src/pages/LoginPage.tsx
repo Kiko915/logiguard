@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { Link } from "react-router-dom"
 import { Eye, EyeOff, ScanLine, Activity, ArrowRight, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -198,12 +199,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 />
                 <span className="text-xs text-foreground">Remember me</span>
               </label>
-              <button
-                type="button"
+              <Link
+                to="/auth/forgot-password"
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
               >
                 Forgot password?
-              </button>
+              </Link>
             </div>
 
             {/* Error */}
