@@ -125,7 +125,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <img
               src="/branding/logiguard_wordmark.png"
               alt="LogiGuard"
-              className="h-6 w-auto object-contain"
+              className="h-10 w-auto object-contain"
             />
           </div>
 
