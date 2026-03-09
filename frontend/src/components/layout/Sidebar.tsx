@@ -4,7 +4,6 @@ import {
   Activity,
   ScrollText,
   Settings,
-  Shield,
   Circle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -28,14 +27,13 @@ export function Sidebar() {
     <aside className="flex flex-col w-[220px] h-screen border-r border-border bg-sidebar shrink-0">
 
       {/* ── Logo ─────────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2.5 h-12 px-4 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-6 h-6 bg-primary">
-          <Shield className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={2.5} />
-        </div>
-        <span className="text-sm font-semibold text-sidebar-foreground tracking-tight">
-          LogiGuard
-        </span>
-        <span className="ml-auto text-2xs font-medium text-muted-foreground bg-muted px-1.5 py-0.5 border border-border">
+      <div className="flex items-center justify-between h-12 px-4 border-b border-sidebar-border">
+        <img
+          src="/branding/logiguard_wordmark.png"
+          alt="LogiGuard"
+          className="h-5 w-auto object-contain"
+        />
+        <span className="text-2xs font-medium text-muted-foreground bg-muted px-1.5 py-0.5 border border-border">
           v2.0
         </span>
       </div>
