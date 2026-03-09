@@ -2,6 +2,7 @@ import { useState } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { LoginPage } from "@/pages/LoginPage"
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
+import { NotFoundPage } from "@/pages/NotFoundPage"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { HomePage } from "@/pages/HomePage"
@@ -64,13 +65,8 @@ function App() {
           }
         />
 
-        {/* ── Catch-all ─────────────────────────────────────────────────────── */}
-        <Route
-          path="*"
-          element={
-            <Navigate to={isAuthenticated ? "/dashboard" : "/auth/login"} replace />
-          }
-        />
+        {/* ── 404 catch-all ─────────────────────────────────────────────────── */}
+        <Route path="*" element={<NotFoundPage />} />
 
       </Routes>
     </BrowserRouter>
