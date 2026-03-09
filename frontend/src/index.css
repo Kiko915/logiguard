@@ -1,68 +1,385 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   LogiGuard Design System
+   Enterprise-grade, minimalist, information-dense UI
+   Stack: Tailwind CSS v4 + shadcn/ui
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Design Tokens → Tailwind Utilities ─────────────────────────────────────
+   Maps CSS variables to Tailwind's theme system.
+   Every color utility (bg-primary, text-muted-foreground, etc.) resolves here.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* Colors */
+  --color-background:             var(--background);
+  --color-foreground:             var(--foreground);
+  --color-card:                   var(--card);
+  --color-card-foreground:        var(--card-foreground);
+  --color-popover:                var(--popover);
+  --color-popover-foreground:     var(--popover-foreground);
+  --color-primary:                var(--primary);
+  --color-primary-foreground:     var(--primary-foreground);
+  --color-secondary:              var(--secondary);
+  --color-secondary-foreground:   var(--secondary-foreground);
+  --color-muted:                  var(--muted);
+  --color-muted-foreground:       var(--muted-foreground);
+  --color-accent:                 var(--accent);
+  --color-accent-foreground:      var(--accent-foreground);
+  --color-destructive:            var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success:                var(--success);
+  --color-success-foreground:     var(--success-foreground);
+  --color-warning:                var(--warning);
+  --color-warning-foreground:     var(--warning-foreground);
+  --color-border:                 var(--border);
+  --color-input:                  var(--input);
+  --color-ring:                   var(--ring);
+  --color-sidebar:                var(--sidebar);
+  --color-sidebar-foreground:     var(--sidebar-foreground);
+  --color-sidebar-border:         var(--sidebar-border);
+  --color-sidebar-accent:         var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+  /* Chart colors — muted, professional palette */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* ── Border Radius ──────────────────────────────────────────────────────────
+     All zeroed out. Enterprise tools use sharp geometry.
+     ─────────────────────────────────────────────────────────────────────── */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-full: 0px;
+
+  /* ── Typography ─────────────────────────────────────────────────────────────
+     Inter for UI text, JetBrains Mono for data/code.
+     ─────────────────────────────────────────────────────────────────────── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Type scale — compact, information-dense */
+  --text-2xs:   0.625rem;  /* 10px — labels, metadata     */
+  --text-xs:    0.6875rem; /* 11px — table cells, tags    */
+  --text-sm:    0.75rem;   /* 12px — body, inputs         */
+  --text-base:  0.8125rem; /* 13px — default UI text      */
+  --text-md:    0.875rem;  /* 14px — section headers      */
+  --text-lg:    1rem;      /* 16px — page titles          */
+  --text-xl:    1.125rem;  /* 18px — reserved, rare       */
+
+  --leading-tight:  1.25;
+  --leading-snug:   1.375;
+  --leading-normal: 1.5;
+
+  /* ── Spacing ────────────────────────────────────────────────────────────────
+     Dense scale. Half of default Tailwind for compact layouts.
+     ─────────────────────────────────────────────────────────────────────── */
+  --spacing-px:   1px;
+  --spacing-0-5:  0.125rem; /* 2px  */
+  --spacing-1:    0.25rem;  /* 4px  */
+  --spacing-1-5:  0.375rem; /* 6px  */
+  --spacing-2:    0.5rem;   /* 8px  */
+  --spacing-2-5:  0.625rem; /* 10px */
+  --spacing-3:    0.75rem;  /* 12px */
+  --spacing-4:    1rem;     /* 16px */
+  --spacing-5:    1.25rem;  /* 20px */
+  --spacing-6:    1.5rem;   /* 24px */
+  --spacing-8:    2rem;     /* 32px */
+  --spacing-10:   2.5rem;   /* 40px */
+  --spacing-12:   3rem;     /* 48px */
+  --spacing-16:   4rem;     /* 64px */
+
+  /* ── Elevation ──────────────────────────────────────────────────────────────
+     Minimal shadows. Structure via borders, not depth.
+     ─────────────────────────────────────────────────────────────────────── */
+  --shadow-xs:  0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-md:  0 2px 6px 0 rgb(0 0 0 / 0.07), 0 1px 3px -1px rgb(0 0 0 / 0.05);
+  --shadow-lg:  0 4px 12px 0 rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-none: none;
+
+  /* ── Borders ────────────────────────────────────────────────────────────────
+     Crisp 1px borders define structure throughout.
+     ─────────────────────────────────────────────────────────────────────── */
+  --border-width: 1px;
+  --border-style: solid;
+}
+
+/* ─── Light Mode ─────────────────────────────────────────────────────────────
+   Neutral monochrome palette — black, white, gray only.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* Surfaces */
+  --background:             oklch(0.985 0 0);  /* near-white                    */
+  --foreground:             oklch(0.13  0 0);  /* near-black                    */
+  --card:                   oklch(1     0 0);  /* pure white                    */
+  --card-foreground:        oklch(0.13  0 0);
+  --popover:                oklch(1     0 0);
+  --popover-foreground:     oklch(0.13  0 0);
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Primary — near-black */
+  --primary:                oklch(0.14  0 0);
+  --primary-foreground:     oklch(0.98  0 0);
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  /* Secondary — light gray */
+  --secondary:              oklch(0.94  0 0);
+  --secondary-foreground:   oklch(0.20  0 0);
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
+  /* Muted — very subtle gray */
+  --muted:                  oklch(0.96  0 0);
+  --muted-foreground:       oklch(0.50  0 0);  /* label text                    */
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
+  /* Accent — off-white hover fill */
+  --accent:                 oklch(0.93  0 0);
+  --accent-foreground:      oklch(0.14  0 0);
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+  /* Semantic */
+  --destructive:            oklch(0.50  0.190 25);   /* muted red                     */
+  --destructive-foreground: oklch(0.98  0     0);
+  --success:                oklch(0.50  0.130 150);  /* muted green                   */
+  --success-foreground:     oklch(0.98  0     0);
+  --warning:                oklch(0.66  0.155 75);   /* amber                         */
+  --warning-foreground:     oklch(0.13  0     0);
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  /* Structure */
+  --border:                 oklch(0.88  0 0);  /* neutral gray border           */
+  --input:                  oklch(0.88  0 0);
+  --ring:                   oklch(0.14  0 0);  /* focus ring = primary          */
+
+  /* Sidebar — slightly deeper than bg */
+  --sidebar:                oklch(0.97  0 0);
+  --sidebar-foreground:     oklch(0.13  0 0);
+  --sidebar-border:         oklch(0.88  0 0);
+  --sidebar-accent:         oklch(0.93  0 0);
+  --sidebar-accent-foreground: oklch(0.14  0 0);
+
+  /* Charts — keep slight color for data legibility */
+  --chart-1:                oklch(0.35  0 0);   /* dark gray                     */
+  --chart-2:                oklch(0.55  0.10  200);  /* slate teal                */
+  --chart-3:                oklch(0.60  0.13  150);  /* sage green                */
+  --chart-4:                oklch(0.65  0.14  75);   /* amber                     */
+  --chart-5:                oklch(0.52  0.15  25);   /* muted red                 */
+
+  /* Legacy shadcn compat */
+  --radius: 0px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+/* ─── Dark Mode ──────────────────────────────────────────────────────────────
+   Deep neutral dark theme — pure grays, no color tint.
+   ─────────────────────────────────────────────────────────────────────────── */
+.dark {
+  /* Surfaces */
+  --background:             oklch(0.11  0 0);  /* near-black                    */
+  --foreground:             oklch(0.93  0 0);  /* near-white                    */
+  --card:                   oklch(0.16  0 0);  /* slightly lighter than bg      */
+  --card-foreground:        oklch(0.93  0 0);
+  --popover:                oklch(0.18  0 0);
+  --popover-foreground:     oklch(0.93  0 0);
+
+  /* Primary — near-white (inverted from light mode) */
+  --primary:                oklch(0.93  0 0);
+  --primary-foreground:     oklch(0.11  0 0);
+
+  /* Secondary */
+  --secondary:              oklch(0.22  0 0);
+  --secondary-foreground:   oklch(0.90  0 0);
+
+  /* Muted */
+  --muted:                  oklch(0.20  0 0);
+  --muted-foreground:       oklch(0.60  0 0);
+
+  /* Accent */
+  --accent:                 oklch(0.23  0 0);
+  --accent-foreground:      oklch(0.90  0 0);
+
+  /* Semantic */
+  --destructive:            oklch(0.62  0.200 25);
+  --destructive-foreground: oklch(0.98  0     0);
+  --success:                oklch(0.60  0.140 150);
+  --success-foreground:     oklch(0.98  0     0);
+  --warning:                oklch(0.72  0.160 75);
+  --warning-foreground:     oklch(0.13  0     0);
+
+  /* Structure */
+  --border:                 oklch(1     0     0 / 0.10);
+  --input:                  oklch(1     0     0 / 0.12);
+  --ring:                   oklch(0.70  0     0);  /* neutral gray focus ring      */
+
+  /* Sidebar — deeper than bg */
+  --sidebar:                oklch(0.085 0 0);
+  --sidebar-foreground:     oklch(0.85  0 0);
+  --sidebar-border:         oklch(1     0 0 / 0.08);
+  --sidebar-accent:         oklch(0.20  0 0);
+  --sidebar-accent-foreground: oklch(0.85  0 0);
+
+  /* Charts */
+  --chart-1:                oklch(0.60  0.16  264);
+  --chart-2:                oklch(0.65  0.12  200);
+  --chart-3:                oklch(0.65  0.15  150);
+  --chart-4:                oklch(0.72  0.16  75);
+  --chart-5:                oklch(0.62  0.20  25);
+
+  --radius: 0px;
+}
+
+/* ─── Base Layer ─────────────────────────────────────────────────────────────
+   Global resets and defaults that enforce the design system.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
   }
-  a:hover {
-    color: #747bff;
+
+  /* Force zero radius everywhere — overrides any component defaults */
+  *,
+  *::before,
+  *::after {
+    border-radius: 0 !important;
   }
-  button {
-    background-color: #f9f9f9;
+
+  html {
+    font-size: 13px; /* compact base — all rem values scale from here */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    font-weight: 400;
+    min-height: 100vh;
+  }
+
+  /* ── Focus Ring ──────────────────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 1.5px solid var(--ring);
+    outline-offset: 1px;
+  }
+
+  /* ── Scrollbar ───────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: var(--muted); }
+  ::-webkit-scrollbar-thumb  { background: var(--border); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+
+  /* ── Typography defaults ─────────────────────────────────────────────────── */
+  h1 { font-size: var(--text-lg);   font-weight: 600; line-height: var(--leading-tight); letter-spacing: -0.01em; }
+  h2 { font-size: var(--text-md);   font-weight: 600; line-height: var(--leading-tight); }
+  h3 { font-size: var(--text-base); font-weight: 600; line-height: var(--leading-snug);  }
+  h4 { font-size: var(--text-sm);   font-weight: 600; line-height: var(--leading-snug);  }
+  p  { font-size: var(--text-base); line-height: var(--leading-normal); }
+
+  /* ── Selection ───────────────────────────────────────────────────────────── */
+  ::selection {
+    background: oklch(from var(--primary) l c h / 0.18);
+  }
+
+  /* ── Code / Mono ─────────────────────────────────────────────────────────── */
+  code, kbd, pre, samp {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+}
+
+/* ─── Component Layer ────────────────────────────────────────────────────────
+   Shared component primitives used across the design system.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* ── Stat Card ───────────────────────────────────────────────────────────── */
+  .stat-card {
+    @apply bg-card border border-border p-3 flex flex-col gap-1;
+    box-shadow: var(--shadow-xs);
+  }
+  .stat-card-label  { @apply text-xs text-muted-foreground font-medium uppercase tracking-wider; }
+  .stat-card-value  { @apply text-lg font-semibold tabular-nums; }
+  .stat-card-delta  { @apply text-xs font-medium; }
+
+  /* ── Data Table ──────────────────────────────────────────────────────────── */
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .data-table thead tr {
+    @apply border-b border-border bg-muted;
+  }
+  .data-table thead th {
+    @apply px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap;
+  }
+  .data-table tbody tr {
+    @apply border-b border-border transition-colors;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-accent/50;
+  }
+  .data-table tbody td {
+    @apply px-3 py-2 text-sm tabular-nums;
+  }
+  .data-table tbody tr:last-child {
+    @apply border-b-0;
+  }
+
+  /* ── Section Header ──────────────────────────────────────────────────────── */
+  .section-header {
+    @apply flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40;
+  }
+  .section-title {
+    @apply text-sm font-semibold text-foreground tracking-tight;
+  }
+
+  /* ── Status Badge ────────────────────────────────────────────────────────── */
+  .status-good      { @apply bg-success/12 text-success       border border-success/30;  }
+  .status-damaged   { @apply bg-destructive/12 text-destructive border border-destructive/30; }
+  .status-empty     { @apply bg-muted text-muted-foreground    border border-border;       }
+  .status-warning   { @apply bg-warning/12 text-warning        border border-warning/30;   }
+
+  /* ── Page Layout ─────────────────────────────────────────────────────────── */
+  .page-root {
+    @apply flex h-screen overflow-hidden bg-background;
+  }
+  .page-main {
+    @apply flex-1 flex flex-col overflow-hidden;
+  }
+  .page-content {
+    @apply flex-1 overflow-auto p-4;
+  }
+
+  /* ── Toolbar ─────────────────────────────────────────────────────────────── */
+  .toolbar {
+    @apply flex items-center gap-2 px-4 py-2 border-b border-border bg-card;
+  }
+
+  /* ── Empty State ─────────────────────────────────────────────────────────── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground;
+  }
+}
+
+/* ─── Utility Layer ──────────────────────────────────────────────────────────
+   One-off helpers for data-dense interfaces.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+  .text-2xs     { font-size: var(--text-2xs); }
+  .font-medium-compact { font-weight: 500; letter-spacing: 0.01em; }
+  .border-grid  { @apply border border-border divide-x divide-border; }
+  .truncate-cell { @apply max-w-[180px] truncate; }
+
+  /* Monospace value display (blockchain hashes, IDs, times) */
+  .mono-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.02em;
   }
 }
