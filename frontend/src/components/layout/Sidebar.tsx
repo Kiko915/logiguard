@@ -10,7 +10,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
-import { useAuth } from "@/contexts/AuthContext"
 import { useSystemStatus, type ServiceStatus } from "@/hooks/useSystemStatus"
 
 // ─── Nav Items ─────────────────────────────────────────────────────────────────
@@ -32,7 +31,6 @@ const BOTTOM_ITEMS = [
 
 // ─── Sidebar ───────────────────────────────────────────────────────────────────
 export function Sidebar() {
-  const { user }                  = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const systemStatus              = useSystemStatus()
 
@@ -182,38 +180,6 @@ export function Sidebar() {
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
       <div className="p-3 border-t border-sidebar-border space-y-2 shrink-0">
-
-        {/* User pill */}
-        {user && (
-          <div className="flex items-center px-0.5 py-1">
-            <div
-              className="w-5 h-5 bg-primary flex items-center justify-center shrink-0"
-              title={collapsed ? `${user.name} · ${user.role}` : undefined}
-            >
-              <span className="text-2xs font-semibold text-primary-foreground leading-none">
-                {user.initials}
-              </span>
-            </div>
-            <div
-              style={{
-                maxWidth: collapsed ? 0   : 160,
-                opacity:  collapsed ? 0   : 1,
-                marginLeft: collapsed ? 0 : 8,
-              }}
-              className="flex flex-col leading-none min-w-0 overflow-hidden transition-all duration-[240ms] ease-in-out"
-            >
-              <span className="text-xs font-medium text-sidebar-foreground truncate whitespace-nowrap">
-                {user.name}
-              </span>
-              <span className="text-2xs text-muted-foreground capitalize whitespace-nowrap">
-                {user.role}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <Separator />
-
         <StatusRow label="Ganache"  status={systemStatus.ganache}  collapsed={collapsed} />
         <StatusRow label="Appwrite" status={systemStatus.appwrite} collapsed={collapsed} />
         <StatusRow label="Queue"    status={systemStatus.queue}    collapsed={collapsed} />
