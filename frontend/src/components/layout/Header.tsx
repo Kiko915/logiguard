@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { Bell, LogOut, RefreshCw } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -20,7 +21,13 @@ export function Header({ title, subtitle }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate         = useNavigate()
 
-  const now     = new Date()
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
   const dateStr = now.toLocaleDateString("en-US", {
     weekday: "short",
     year:    "numeric",
@@ -30,6 +37,7 @@ export function Header({ title, subtitle }: HeaderProps) {
   const timeStr = now.toLocaleTimeString("en-US", {
     hour:   "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   })
 
   async function handleLogout() {
