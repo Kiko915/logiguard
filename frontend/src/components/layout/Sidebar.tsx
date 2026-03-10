@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/contexts/AuthContext"
+import { useSystemStatus, type ServiceStatus } from "@/hooks/useSystemStatus"
 
 // ─── Nav Items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -33,6 +34,7 @@ const BOTTOM_ITEMS = [
 export function Sidebar() {
   const { user }                  = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+  const systemStatus              = useSystemStatus()
 
   return (
     <aside
@@ -212,9 +214,9 @@ export function Sidebar() {
 
         <Separator />
 
-        <StatusRow label="Ganache"  status="connected" collapsed={collapsed} />
-        <StatusRow label="Appwrite" status="connected" collapsed={collapsed} />
-        <StatusRow label="Queue"    status="stable"    collapsed={collapsed} />
+        <StatusRow label="Ganache"  status={systemStatus.ganache}  collapsed={collapsed} />
+        <StatusRow label="Appwrite" status={systemStatus.appwrite} collapsed={collapsed} />
+        <StatusRow label="Queue"    status={systemStatus.queue}    collapsed={collapsed} />
       </div>
     </aside>
   )
@@ -241,14 +243,30 @@ function StatusRow({
   collapsed,
 }: {
   label:     string
-  status:    "connected" | "disconnected" | "stable" | "unstable"
+  status:    ServiceStatus
   collapsed: boolean
 }) {
-  const isOk = status === "connected" || status === "stable"
+  const isOk      = status === "connected" || status === "stable"
+  const isChecking = status === "checking"
+
+  const dotClass = isChecking
+    ? "bg-muted-foreground animate-pulse"
+    : isOk
+      ? "bg-success"
+      : "bg-destructive"
+
+  const textClass = isChecking
+    ? "text-muted-foreground"
+    : isOk
+      ? "text-success"
+      : "text-destructive"
+
+  const label2 = isChecking ? "Checking…" : status.charAt(0).toUpperCase() + status.slice(1)
+
   return (
     <div
       className="flex items-center justify-between"
-      title={collapsed ? `${label}: ${status}` : undefined}
+      title={collapsed ? `${label}: ${label2}` : undefined}
     >
       <span
         style={{ maxWidth: collapsed ? 0 : 120, opacity: collapsed ? 0 : 1 }}
@@ -258,13 +276,13 @@ function StatusRow({
         {label}
       </span>
 
-      <span className={cn("flex items-center gap-1 text-2xs font-medium shrink-0", isOk ? "text-success" : "text-destructive")}>
-        <span className={cn("w-1.5 h-1.5 inline-block shrink-0", isOk ? "bg-success" : "bg-destructive")} />
+      <span className={cn("flex items-center gap-1 text-2xs font-medium shrink-0", textClass)}>
+        <span className={cn("w-1.5 h-1.5 inline-block shrink-0", dotClass)} />
         <span
           style={{ maxWidth: collapsed ? 0 : 80, opacity: collapsed ? 0 : 1 }}
           className="overflow-hidden whitespace-nowrap transition-all duration-[240ms] ease-in-out"
         >
-          {status.charAt(0).toUpperCase() + status.slice(1)}
+          {label2}
         </span>
       </span>
     </div>
