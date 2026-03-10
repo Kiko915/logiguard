@@ -4,6 +4,7 @@ import { LoginPage } from "@/pages/LoginPage"
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
+import { ProfilePage } from "@/pages/ProfilePage"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { HomePage } from "@/pages/HomePage"
@@ -43,8 +44,6 @@ function App() {
 }
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
-// Auth state is consumed from context. During the initial session check,
-// a blank overlay prevents flash of unauthenticated content.
 
 function AppRoutes() {
   const { user, isLoading } = useAuth()
@@ -63,32 +62,34 @@ function AppRoutes() {
       />
 
       {/* ── Auth routes ────────────────────────────────────────────────────── */}
-
-      {/* /auth → redirect to login (or dashboard if already authenticated) */}
       <Route
         path="/auth"
         element={<Navigate to={user ? "/dashboard" : "/auth/login"} replace />}
       />
-
-      {/* /auth/login */}
       <Route
         path="/auth/login"
         element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
-
-      {/* /auth/forgot-password */}
       <Route
         path="/auth/forgot-password"
         element={user ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />}
       />
-
-      {/* /auth/reset-password — accessible by anyone (linked from email) */}
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
 
-      {/* ── Protected dashboard ────────────────────────────────────────────── */}
+      {/* ── Protected app routes ───────────────────────────────────────────── */}
       <Route
         path="/dashboard"
-        element={user ? <DashboardLayout /> : <Navigate to="/auth/login" replace />}
+        element={user
+          ? <AppLayout title="Dashboard"><HomePage /></AppLayout>
+          : <Navigate to="/auth/login" replace />
+        }
+      />
+      <Route
+        path="/profile"
+        element={user
+          ? <AppLayout title="Profile"><ProfilePage /></AppLayout>
+          : <Navigate to="/auth/login" replace />
+        }
       />
 
       {/* ── 404 catch-all ─────────────────────────────────────────────────── */}
@@ -98,16 +99,17 @@ function AppRoutes() {
   )
 }
 
-// ─── Dashboard Layout ──────────────────────────────────────────────────────────
+// ─── Shared App Layout ─────────────────────────────────────────────────────────
+// Sidebar + header shell reused across all authenticated pages.
 
-function DashboardLayout() {
+function AppLayout({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="page-root">
       <Sidebar />
       <div className="page-main">
-        <Header title="Dashboard" />
+        <Header title={title} />
         <main className="page-content">
-          <HomePage />
+          {children}
         </main>
       </div>
     </div>

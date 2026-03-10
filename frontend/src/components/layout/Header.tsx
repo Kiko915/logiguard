@@ -83,14 +83,18 @@ export function Header({ title, subtitle }: HeaderProps) {
 
         <div className="w-px h-5 bg-border" />
 
-        {/* User identity */}
-        <div className="flex items-center gap-2">
+        {/* User identity — click to go to profile */}
+        <button
+          onClick={() => navigate("/profile")}
+          className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+          title="View profile"
+        >
           <div className="w-6 h-6 bg-primary flex items-center justify-center shrink-0">
             <span className="text-2xs font-semibold text-primary-foreground">
               {user?.initials ?? "?"}
             </span>
           </div>
-          <div className="hidden md:flex flex-col leading-none">
+          <div className="hidden md:flex flex-col leading-none text-left">
             <span className="text-xs font-medium text-foreground">
               {user ? shortName(user.name) : "—"}
             </span>
@@ -98,7 +102,7 @@ export function Header({ title, subtitle }: HeaderProps) {
               {user?.role ?? ""}
             </span>
           </div>
-        </div>
+        </button>
 
         {/* Logout */}
         <Button
