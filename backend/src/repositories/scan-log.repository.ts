@@ -1,8 +1,9 @@
+import { Query } from "node-appwrite";
 import { BaseRepository } from "./base.repository.js";
 import type { GetScanLogsQuery } from "../validators/scanner.validator.js";
 
 // ─── Scan Log Repository ───────────────────────────────────────────────────────
-export class ScanLogRepository extends BaseRepository<"scan_logs"> {
+export class ScanLogRepository extends BaseRepository {
   constructor() {
     super("scan_logs");
   }
@@ -11,42 +12,72 @@ export class ScanLogRepository extends BaseRepository<"scan_logs"> {
     const { page, per_page, status, from, to } = filters;
     const offset = (page - 1) * per_page;
 
-    let q = this.query
-      .select("*, packages(barcode, blockchain_tx_hash)", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + per_page - 1);
+    const queries = [
+      Query.limit(per_page),
+      Query.offset(offset),
+      Query.orderDesc("$createdAt"),
+    ];
 
-    if (status) q = q.eq("status", status);
-    if (from) q = q.gte("created_at", from);
-    if (to) q = q.lte("created_at", to);
+    if (status) queries.push(Query.equal("status", status));
+    if (from)   queries.push(Query.greaterThanEqual("$createdAt", from));
+    if (to)     queries.push(Query.lessThanEqual("$createdAt", to));
 
-    const { data, error, count } = await q;
-    if (error) throw error;
-    return { data: data ?? [], total: count ?? 0 };
+    const result = await this.db.listDocuments(this.dbId, this.collectionId, queries);
+
+    return {
+      data:  result.documents.map((d) => this.mapDoc(d as unknown as Record<string, unknown>)),
+      total: result.total,
+    };
   }
 
   // Returns average scan_time_ms from the last N scans — fed into µ for M/M/1
   async getAverageScanTime(limit = 100): Promise<number | null> {
-    const { data, error } = await this.query
-      .select("scan_time_ms")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    const result = await this.db.listDocuments(this.dbId, this.collectionId, [
+      Query.limit(limit),
+      Query.orderDesc("$createdAt"),
+      Query.select(["scan_time_ms"]),
+    ]);
 
-    if (error) throw error;
-    if (!data || data.length === 0) return null;
+    if (result.documents.length === 0) return null;
 
-    const avg = data.reduce((sum, r) => sum + r.scan_time_ms, 0) / data.length;
+    const avg =
+      result.documents.reduce((sum, r) => sum + (r["scan_time_ms"] as number), 0) /
+      result.documents.length;
+
     return avg;
   }
 
   async getStatusDistribution() {
-    const { data, error } = await this.client
-      .rpc("get_scan_stats", {
-        start_date: new Date(Date.now() - 86400000).toISOString(),
-        end_date: new Date().toISOString(),
-      });
+    const since = new Date(Date.now() - 86400000).toISOString();
 
-    if (error) throw error;
-    return data;
+    const [total, good, damaged, empty] = await Promise.all([
+      this.db.listDocuments(this.dbId, this.collectionId, [
+        Query.greaterThanEqual("$createdAt", since),
+        Query.limit(1),
+      ]),
+      this.db.listDocuments(this.dbId, this.collectionId, [
+        Query.greaterThanEqual("$createdAt", since),
+        Query.equal("status", "good"),
+        Query.limit(1),
+      ]),
+      this.db.listDocuments(this.dbId, this.collectionId, [
+        Query.greaterThanEqual("$createdAt", since),
+        Query.equal("status", "damaged"),
+        Query.limit(1),
+      ]),
+      this.db.listDocuments(this.dbId, this.collectionId, [
+        Query.greaterThanEqual("$createdAt", since),
+        Query.equal("status", "empty"),
+        Query.limit(1),
+      ]),
+    ]);
+
+    return {
+      total_scans:     total.total,
+      good_count:      good.total,
+      damaged_count:   damaged.total,
+      empty_count:     empty.total,
+      avg_scan_time_ms: await this.getAverageScanTime(),
+    };
   }
 }

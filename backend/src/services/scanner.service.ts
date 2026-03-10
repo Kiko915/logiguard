@@ -23,8 +23,8 @@ export class ScannerService {
     const packageId = randomUUID();
 
     // 1. Create package record
+    // documentId is passed separately — Appwrite uses $id, not a data field.
     const pkgPayload = {
-      id: packageId,
       barcode: input.barcode ?? null,
       status: input.status,
       confidence: input.confidence,
@@ -34,7 +34,7 @@ export class ScannerService {
       scanned_at: now,
     };
 
-    const pkg = (await this.packageRepo.create(pkgPayload)) as unknown as Package;
+    const pkg = (await this.packageRepo.create(pkgPayload, packageId)) as unknown as Package;
 
     // 2. Create immutable scan log (append-only audit trail)
     const scanLogPayload = {

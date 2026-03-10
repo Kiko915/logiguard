@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { supabase } from "../lib/supabase.js";
+import { databases } from "../lib/appwrite.js";
 import { checkBlockchainConnection } from "../lib/blockchain.js";
+import { config } from "../config/index.js";
 import type { ApiSuccess } from "../types/index.js";
 
 const router = new Hono();
@@ -15,7 +16,7 @@ router.get("/", (c) => {
 // Readiness probe — checks downstream dependencies
 router.get("/ready", async (c) => {
   const [dbOk, blockchainOk] = await Promise.allSettled([
-    supabase.from("packages").select("id").limit(1).then(() => true),
+    databases.listDocuments(config.APPWRITE_DATABASE_ID, "packages", []).then(() => true),
     checkBlockchainConnection(),
   ]);
 

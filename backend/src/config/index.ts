@@ -8,14 +8,11 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // Supabase
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  SUPABASE_ANON_KEY: z.string().min(1),
-
-  // JWT
-  JWT_SECRET: z.string().min(32),
-  JWT_EXPIRES_IN: z.string().default("24h"),
+  // Appwrite
+  APPWRITE_ENDPOINT: z.string().url(),
+  APPWRITE_PROJECT_ID: z.string().min(1),
+  APPWRITE_API_KEY: z.string().min(1),
+  APPWRITE_DATABASE_ID: z.string().min(1),
 
   // Blockchain
   GANACHE_RPC_URL: z.string().url().default("http://127.0.0.1:8545"),

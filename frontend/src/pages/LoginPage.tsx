@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { account } from "@/lib/appwrite"
 
 interface LoginPageProps {
   onLogin: () => void
@@ -45,7 +46,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     return () => clearTimeout(t)
   }, [])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
 
@@ -55,11 +56,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
 
     setLoading(true)
-    // Simulate auth — replace with real API call
-    setTimeout(() => {
-      setLoading(false)
+    try {
+      await account.createEmailPasswordSession({ email, password })
       onLogin()
-    }, 1000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid email or password."
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

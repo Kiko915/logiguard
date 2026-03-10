@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { LoginPage } from "@/pages/LoginPage"
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
@@ -6,12 +6,24 @@ import { NotFoundPage } from "@/pages/NotFoundPage"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { HomePage } from "@/pages/HomePage"
+import { account } from "@/lib/appwrite"
 
 // ─── App ───────────────────────────────────────────────────────────────────────
-// Auth state is a local stub — replace with a real auth context/store later
-// (e.g. Supabase session, JWT validation, Zustand store).
+// Auth state is driven by Appwrite — account.get() resolves if a session exists.
+// null = loading, false = unauthenticated, true = authenticated.
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    account.get()
+      .then(() => setIsAuthenticated(true))
+      .catch(() => setIsAuthenticated(false))
+  }, [])
+
+  // Show blank screen while session is being resolved
+  if (isAuthenticated === null) {
+    return <div className="fixed inset-0 bg-background" />
+  }
 
   return (
     <BrowserRouter>

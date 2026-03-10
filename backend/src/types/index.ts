@@ -119,10 +119,11 @@ export interface ApiError {
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
-export interface JwtPayload {
-  sub: string;
+// Appwrite-authenticated user extracted from JWT in auth middleware.
+// Role is stored as the first entry in Appwrite user labels.
+export interface AppwriteUser {
+  $id: string;
   email: string;
+  name: string;
   role: "admin" | "operator" | "viewer";
-  iat: number;
-  exp: number;
 }

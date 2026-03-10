@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, MailCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { account } from "@/lib/appwrite"
 
 // ─── Forgot Password Page ──────────────────────────────────────────────────────
 export function ForgotPasswordPage() {
@@ -12,7 +13,7 @@ export function ForgotPasswordPage() {
   const [submitted, setSubmitted] = useState(false)
   const [error, setError]       = useState("")
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
 
@@ -22,11 +23,17 @@ export function ForgotPasswordPage() {
     }
 
     setLoading(true)
-    // Simulate API call — replace with real password reset logic
-    setTimeout(() => {
-      setLoading(false)
+    try {
+      // Appwrite sends a reset email with a link back to /auth/reset-password
+      const resetUrl = `${window.location.origin}/auth/reset-password`
+      await account.createRecovery({ email, url: resetUrl })
       setSubmitted(true)
-    }, 1000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send reset email."
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

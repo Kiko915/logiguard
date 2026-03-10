@@ -1,17 +1,18 @@
 import { createMiddleware } from "hono/factory";
-import jwt from "jsonwebtoken";
-import { config } from "../config/index.js";
-import type { JwtPayload, ApiError } from "../types/index.js";
+import { createUserClient } from "../lib/appwrite.js";
+import type { AppwriteUser, ApiError } from "../types/index.js";
 
 // ─── Extend Hono Context Variables ────────────────────────────────────────────
 declare module "hono" {
   interface ContextVariableMap {
-    user: JwtPayload;
+    user: AppwriteUser;
   }
 }
 
-// ─── JWT Auth Middleware ───────────────────────────────────────────────────────
-// Validates Bearer token and injects decoded payload into context.
+// ─── Appwrite JWT Auth Middleware ──────────────────────────────────────────────
+// Expects: Authorization: Bearer <appwrite-jwt>
+// Frontend obtains the JWT via: account.createJWT()
+// Role is the first entry in the user's Appwrite labels (default: "viewer").
 export const authMiddleware = createMiddleware(async (c, next) => {
   const authHeader = c.req.header("Authorization");
 
@@ -26,8 +27,19 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, config.JWT_SECRET) as JwtPayload;
-    c.set("user", payload);
+    const { account } = createUserClient(token);
+    const appwriteUser = await account.get();
+
+    const role = ((appwriteUser.labels?.[0]) ?? "viewer") as AppwriteUser["role"];
+
+    const user: AppwriteUser = {
+      $id:   appwriteUser.$id,
+      email: appwriteUser.email,
+      name:  appwriteUser.name,
+      role,
+    };
+
+    c.set("user", user);
     await next();
   } catch {
     const body: ApiError = {
@@ -39,8 +51,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 });
 
 // ─── Role Guard ────────────────────────────────────────────────────────────────
-// Usage: requireRole("admin") or requireRole("admin", "operator")
-export function requireRole(...roles: JwtPayload["role"][]) {
+export function requireRole(...roles: AppwriteUser["role"][]) {
   return createMiddleware(async (c, next) => {
     const user = c.get("user");
     if (!roles.includes(user.role)) {

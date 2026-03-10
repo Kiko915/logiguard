@@ -1,67 +1,65 @@
-import { supabase } from "../lib/supabase.js";
-import type { Database } from "../types/database.types.js";
-
-type TableName = keyof Database["public"]["Tables"];
+import { Databases, Query, ID } from "node-appwrite";
+import { databases } from "../lib/appwrite.js";
+import { config } from "../config/index.js";
 
 // ─── Base Repository ───────────────────────────────────────────────────────────
-// Provides generic CRUD operations. Domain repositories extend this class
-// and add query methods specific to their table.
-export abstract class BaseRepository<T extends TableName> {
-  protected readonly client = supabase;
+// Provides generic CRUD for Appwrite collections.
+// Derived repositories add domain-specific query methods.
+// mapDoc() normalises Appwrite system fields ($id, $createdAt) into
+// the domain shape (id, created_at) so service-layer code is unchanged.
+export abstract class BaseRepository {
+  protected readonly db: Databases = databases;
+  protected readonly dbId: string  = config.APPWRITE_DATABASE_ID;
 
-  constructor(protected readonly table: T) {}
+  constructor(protected readonly collectionId: string) {}
 
-  protected get query() {
-    return this.client.from(this.table);
+  // Strips Appwrite $ fields and maps $id → id, $createdAt → created_at
+  protected mapDoc(doc: Record<string, unknown>): Record<string, unknown> {
+    const {
+      $id, $createdAt,
+      $updatedAt: _u, $collectionId: _c, $databaseId: _d, $permissions: _p,
+      ...rest
+    } = doc as Record<string, unknown>;
+    return { id: $id, created_at: $createdAt, ...rest };
   }
 
   async findById(id: string) {
-    const { data, error } = await this.query
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) throw error;
-    return data;
+    const doc = await this.db.getDocument(this.dbId, this.collectionId, id);
+    return this.mapDoc(doc as unknown as Record<string, unknown>);
   }
 
   async findAll(options: { page: number; per_page: number }) {
     const { page, per_page } = options;
-    const from = (page - 1) * per_page;
-    const to = from + per_page - 1;
+    const offset = (page - 1) * per_page;
 
-    const { data, error, count } = await this.query
-      .select("*", { count: "exact" })
-      .range(from, to)
-      .order("created_at", { ascending: false });
+    const result = await this.db.listDocuments(this.dbId, this.collectionId, [
+      Query.limit(per_page),
+      Query.offset(offset),
+      Query.orderDesc("$createdAt"),
+    ]);
 
-    if (error) throw error;
-    return { data: data ?? [], total: count ?? 0 };
+    return {
+      data:  result.documents.map((d) => this.mapDoc(d as unknown as Record<string, unknown>)),
+      total: result.total,
+    };
   }
 
-  async create(payload: Database["public"]["Tables"][T]["Insert"]) {
-    const { data, error } = await this.query
-      .insert(payload as never)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return data;
+  async create(data: Record<string, unknown>, documentId?: string) {
+    const doc = await this.db.createDocument(
+      this.dbId,
+      this.collectionId,
+      documentId ?? ID.unique(),
+      data,
+    );
+    return this.mapDoc(doc as unknown as Record<string, unknown>);
   }
 
-  async update(id: string, payload: Database["public"]["Tables"][T]["Update"]) {
-    const { data, error } = await this.query
-      .update(payload as never)
-      .eq("id", id)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return data;
+  async update(id: string, data: Record<string, unknown>) {
+    const doc = await this.db.updateDocument(this.dbId, this.collectionId, id, data);
+    return this.mapDoc(doc as unknown as Record<string, unknown>);
   }
 
   async delete(id: string) {
-    const { error } = await this.query.delete().eq("id", id);
-    if (error) throw error;
+    await this.db.deleteDocument(this.dbId, this.collectionId, id);
   }
 }
