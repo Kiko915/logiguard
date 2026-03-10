@@ -19,10 +19,11 @@ export interface AuthUser {
 }
 
 interface AuthContextValue {
-  user:      AuthUser | null
-  isLoading: boolean
-  login:     (email: string, password: string, rememberMe: boolean) => Promise<void>
-  logout:    () => Promise<void>
+  user:        AuthUser | null
+  isLoading:   boolean
+  login:       (email: string, password: string, rememberMe: boolean) => Promise<void>
+  logout:      () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 // ─── Session persistence keys ──────────────────────────────────────────────────
@@ -127,6 +128,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   )
 
+  // ── refreshUser ────────────────────────────────────────────────────────────
+  const refreshUser = useCallback(async () => {
+    const raw = await account.get()
+    setUser(mapAppwriteUser(raw))
+  }, [])
+
   // ── logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     await account.deleteSession("current").catch(() => {})
@@ -137,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

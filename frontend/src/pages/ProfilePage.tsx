@@ -17,13 +17,14 @@ type Tab = "profile" | "password"
 
 // ─── Profile Page ──────────────────────────────────────────────────────────────
 export function ProfilePage() {
-  const { user, logout } = useAuth()
-  const navigate         = useNavigate()
+  const { user, logout, refreshUser } = useAuth()
+  const navigate                      = useNavigate()
 
   const [activeTab, setActiveTab] = useState<Tab>("profile")
 
   // ── Profile details state ──────────────────────────────────────────────────
   const [joinedDate,     setJoinedDate]     = useState("")
+  const [name,           setName]           = useState("")
   const [username,       setUsername]       = useState("")
   const [bio,            setBio]            = useState("")
   const [profileLoading, setProfileLoading] = useState(true)
@@ -46,6 +47,7 @@ export function ProfilePage() {
     account.get()
       .then((raw) => {
         const prefs = (raw.prefs as UserPrefs) ?? {}
+        setName(raw.name ?? "")
         setUsername(prefs.username ?? "")
         setBio(prefs.bio ?? "")
         const date = new Date(raw.registration)
@@ -61,9 +63,14 @@ export function ProfilePage() {
     e.preventDefault()
     setProfileError("")
     setProfileSuccess(false)
+    if (!name.trim()) { setProfileError("Name is required."); return }
     setProfileSaving(true)
     try {
-      await account.updatePrefs({ username: username.trim(), bio: bio.trim() })
+      await Promise.all([
+        account.updateName({ name: name.trim() }),
+        account.updatePrefs({ username: username.trim(), bio: bio.trim() }),
+      ])
+      await refreshUser()   // sync header + sidebar with new name/initials
       setProfileSuccess(true)
     } catch (err: unknown) {
       setProfileError(err instanceof Error ? err.message : "Failed to save profile.")
@@ -196,6 +203,20 @@ export function ProfilePage() {
           {/* ── Tab: Profile Details ─────────────────────────────────────── */}
           {activeTab === "profile" && (
             <form onSubmit={handleSaveProfile} className="p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="name">
+                  Full Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="name"
+                  placeholder="e.g. Francis Neil Mistica"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={profileSaving}
+                  maxLength={128}
+                />
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="username">Username</Label>
                 <Input
