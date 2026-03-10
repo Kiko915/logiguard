@@ -231,7 +231,7 @@ function StatusRow({
 
   return (
     <div
-      className="flex items-center justify-between"
+      className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}
       title={collapsed ? `${label}: ${label2}` : undefined}
     >
       <span
