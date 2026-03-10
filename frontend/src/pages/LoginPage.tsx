@@ -1,15 +1,11 @@
 import { useState, useEffect } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Eye, EyeOff, ScanLine, Activity, ArrowRight, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { account } from "@/lib/appwrite"
-
-interface LoginPageProps {
-  onLogin: () => void
-}
+import { useAuth } from "@/contexts/AuthContext"
 
 // ─── Feature bullets — left panel ─────────────────────────────────────────────
 const FEATURES = [
@@ -31,7 +27,9 @@ const FEATURES = [
 ]
 
 // ─── Login Page ────────────────────────────────────────────────────────────────
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage() {
+  const { login }                       = useAuth()
+  const navigate                        = useNavigate()
   const [gifReady, setGifReady]         = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail]               = useState("")
@@ -57,8 +55,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
     setLoading(true)
     try {
-      await account.createEmailPasswordSession({ email, password })
-      onLogin()
+      await login(email, password, remember)
+      navigate("/dashboard", { replace: true })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Invalid email or password."
       setError(msg)

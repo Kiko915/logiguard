@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
+import { useAuth } from "@/contexts/AuthContext"
 
 // ─── Nav Items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -23,6 +24,8 @@ const BOTTOM_ITEMS = [
 
 // ─── Sidebar ───────────────────────────────────────────────────────────────────
 export function Sidebar() {
+  const { user } = useAuth()
+
   return (
     <aside className="flex flex-col w-[220px] h-screen border-r border-border bg-sidebar shrink-0">
 
@@ -90,9 +93,31 @@ export function Sidebar() {
       </nav>
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <div className="p-3 border-t border-sidebar-border space-y-1.5">
+      <div className="p-3 border-t border-sidebar-border space-y-2">
+
+        {/* User pill */}
+        {user && (
+          <div className="flex items-center gap-2 px-1 py-1">
+            <div className="w-5 h-5 bg-primary flex items-center justify-center shrink-0">
+              <span className="text-2xs font-semibold text-primary-foreground leading-none">
+                {user.initials}
+              </span>
+            </div>
+            <div className="flex flex-col leading-none min-w-0">
+              <span className="text-xs font-medium text-sidebar-foreground truncate">
+                {user.name}
+              </span>
+              <span className="text-2xs text-muted-foreground capitalize">
+                {user.role}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <Separator />
+
         <StatusRow label="Ganache"  status="connected" />
-        <StatusRow label="Supabase" status="connected" />
+        <StatusRow label="Appwrite" status="connected" />
         <StatusRow label="Queue"    status="stable"    />
       </div>
     </aside>
@@ -104,7 +129,7 @@ function StatusRow({
   label,
   status,
 }: {
-  label: string
+  label:  string
   status: "connected" | "disconnected" | "stable" | "unstable"
 }) {
   const isOk = status === "connected" || status === "stable"
