@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useLocation } from "react-router-dom"
 import {
   LayoutDashboard,
   ScanLine,
@@ -14,14 +15,14 @@ import { useSystemStatus, type ServiceStatus } from "@/hooks/useSystemStatus"
 
 // ─── Nav Items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard",   active: true  },
-  { icon: ScanLine,        label: "Live Scanner", active: false },
-  { icon: Activity,        label: "Simulation",   active: false },
-  { icon: ScrollText,      label: "Scan Logs",    active: false },
+  { icon: LayoutDashboard, label: "Dashboard",   path: "/dashboard"    },
+  { icon: ScanLine,        label: "Live Scanner", path: "/live-scanner" },
+  { icon: Activity,        label: "Simulation",   path: "/simulation"   },
+  { icon: ScrollText,      label: "Scan Logs",    path: "/scan-logs"    },
 ] as const
 
 const BOTTOM_ITEMS = [
-  { icon: Settings, label: "Settings", active: false },
+  { icon: Settings, label: "Settings", path: "/settings" },
 ] as const
 
 // Collapsed sidebar width = 52px.
@@ -33,6 +34,7 @@ const BOTTOM_ITEMS = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const systemStatus              = useSystemStatus()
+  const { pathname }              = useLocation()
 
   return (
     <aside
@@ -82,7 +84,9 @@ export function Sidebar() {
         {/* Section label */}
         <SectionLabel collapsed={collapsed}>Menu</SectionLabel>
 
-        {NAV_ITEMS.map(({ icon: Icon, label, active }) => (
+        {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
+          const active = pathname === path
+          return (
           <button
             key={label}
             title={collapsed ? label : undefined}
@@ -119,36 +123,40 @@ export function Sidebar() {
               </span>
             )}
           </button>
-        ))}
+          )
+        })}
 
         <Separator className="my-2" />
 
         <SectionLabel collapsed={collapsed}>System</SectionLabel>
 
-        {BOTTOM_ITEMS.map(({ icon: Icon, label, active }) => (
-          <button
-            key={label}
-            title={collapsed ? label : undefined}
-            className={cn(
-              "flex items-center w-full px-2.5 py-2 text-sm cursor-pointer transition-colors duration-75",
-              active
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            )}
-          >
-            <Icon className="w-4 h-4 shrink-0" strokeWidth={2} />
-            <span
-              style={{
-                maxWidth:   collapsed ? 0   : 160,
-                opacity:    collapsed ? 0   : 1,
-                marginLeft: collapsed ? 0   : 10,
-              }}
-              className="overflow-hidden whitespace-nowrap transition-all duration-[240ms] ease-in-out"
+        {BOTTOM_ITEMS.map(({ icon: Icon, label, path }) => {
+          const active = pathname === path
+          return (
+            <button
+              key={label}
+              title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center w-full px-2.5 py-2 text-sm cursor-pointer transition-colors duration-75",
+                active
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              )}
             >
-              {label}
-            </span>
-          </button>
-        ))}
+              <Icon className="w-4 h-4 shrink-0" strokeWidth={active ? 2.5 : 2} />
+              <span
+                style={{
+                  maxWidth:   collapsed ? 0  : 160,
+                  opacity:    collapsed ? 0  : 1,
+                  marginLeft: collapsed ? 0  : 10,
+                }}
+                className="overflow-hidden whitespace-nowrap transition-all duration-[240ms] ease-in-out"
+              >
+                {label}
+              </span>
+            </button>
+          )
+        })}
 
         {/* ── Collapse toggle ─────────────────────────────────────────────────── */}
         <div className="mt-auto pt-2">
