@@ -13,19 +13,23 @@ interface UserPrefs {
   bio?:      string
 }
 
+type Tab = "profile" | "password"
+
 // ─── Profile Page ──────────────────────────────────────────────────────────────
 export function ProfilePage() {
-  const { user, logout }  = useAuth()
-  const navigate          = useNavigate()
+  const { user, logout } = useAuth()
+  const navigate         = useNavigate()
+
+  const [activeTab, setActiveTab] = useState<Tab>("profile")
 
   // ── Profile details state ──────────────────────────────────────────────────
-  const [joinedDate,      setJoinedDate]      = useState("")
-  const [username,        setUsername]        = useState("")
-  const [bio,             setBio]             = useState("")
-  const [profileLoading,  setProfileLoading]  = useState(true)
-  const [profileSaving,   setProfileSaving]   = useState(false)
-  const [profileSuccess,  setProfileSuccess]  = useState(false)
-  const [profileError,    setProfileError]    = useState("")
+  const [joinedDate,     setJoinedDate]     = useState("")
+  const [username,       setUsername]       = useState("")
+  const [bio,            setBio]            = useState("")
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileSaving,  setProfileSaving]  = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+  const [profileError,   setProfileError]   = useState("")
 
   // ── Password change state ──────────────────────────────────────────────────
   const [oldPassword,     setOldPassword]     = useState("")
@@ -37,14 +41,13 @@ export function ProfilePage() {
   const [pwdSuccess,      setPwdSuccess]      = useState(false)
   const [pwdError,        setPwdError]        = useState("")
 
-  // ── Fetch prefs + registration date on mount ───────────────────────────────
+  // ── Fetch prefs + registration date ───────────────────────────────────────
   useEffect(() => {
     account.get()
       .then((raw) => {
         const prefs = (raw.prefs as UserPrefs) ?? {}
         setUsername(prefs.username ?? "")
         setBio(prefs.bio ?? "")
-        // registration is an ISO date string in the web SDK
         const date = new Date(raw.registration)
         setJoinedDate(
           date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
@@ -53,7 +56,7 @@ export function ProfilePage() {
       .finally(() => setProfileLoading(false))
   }, [])
 
-  // ── Save profile details ───────────────────────────────────────────────────
+  // ── Save profile ───────────────────────────────────────────────────────────
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault()
     setProfileError("")
@@ -74,21 +77,13 @@ export function ProfilePage() {
     e.preventDefault()
     setPwdError("")
     setPwdSuccess(false)
-    if (newPassword.length < 8) {
-      setPwdError("New password must be at least 8 characters.")
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setPwdError("Passwords do not match.")
-      return
-    }
+    if (newPassword.length < 8) { setPwdError("New password must be at least 8 characters."); return }
+    if (newPassword !== confirmPassword) { setPwdError("Passwords do not match."); return }
     setPwdSaving(true)
     try {
       await account.updatePassword({ password: newPassword, oldPassword })
       setPwdSuccess(true)
-      setOldPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
+      setOldPassword(""); setNewPassword(""); setConfirmPassword("")
     } catch (err: unknown) {
       setPwdError(err instanceof Error ? err.message : "Failed to update password.")
     } finally {
@@ -101,7 +96,6 @@ export function ProfilePage() {
     navigate("/auth/login", { replace: true })
   }
 
-  // ── Role badge styling ─────────────────────────────────────────────────────
   const roleBadge = {
     admin:    "bg-primary text-primary-foreground",
     operator: "bg-warning/15 text-warning border border-warning/30",
@@ -109,15 +103,16 @@ export function ProfilePage() {
   }[user?.role ?? "viewer"]
 
   return (
-    <div className="max-w-4xl">
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
+    // mx-auto centers the card block horizontally inside page-content
+    <div className="mx-auto w-full max-w-3xl">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
 
         {/* ── Identity Card ───────────────────────────────────────────────── */}
         <div className="flex flex-col bg-card border border-border">
 
           {/* Avatar + name */}
           <div className="flex flex-col items-center gap-3 p-6 border-b border-border">
-            <div className="w-16 h-16 bg-primary flex items-center justify-center shrink-0">
+            <div className="w-16 h-16 bg-primary flex items-center justify-center">
               <span className="text-xl font-bold text-primary-foreground tracking-tight">
                 {user?.initials ?? "?"}
               </span>
@@ -132,8 +127,8 @@ export function ProfilePage() {
             </div>
           </div>
 
-          {/* Meta info */}
-          <div className="flex flex-col gap-2.5 p-5 flex-1">
+          {/* Meta rows */}
+          <div className="flex flex-col gap-3 p-5 flex-1">
             <MetaRow icon={Shield} label="Role">
               <span className={cn("text-2xs font-semibold px-1.5 py-0.5 capitalize", roleBadge)}>
                 {user?.role ?? "—"}
@@ -147,7 +142,7 @@ export function ProfilePage() {
             </MetaRow>
 
             <MetaRow icon={Mail} label="Email">
-              <span className="text-xs text-foreground truncate max-w-[130px]" title={user?.email}>
+              <span className="text-xs text-foreground truncate max-w-[120px]" title={user?.email}>
                 {user?.email ?? "—"}
               </span>
             </MetaRow>
@@ -177,18 +172,29 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Edit Forms ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
+        {/* ── Tabbed Edit Panel ────────────────────────────────────────────── */}
+        <div className="flex flex-col bg-card border border-border">
 
-          {/* Profile Details */}
-          <section className="bg-card border border-border">
-            <div className="px-5 py-3.5 border-b border-border">
-              <h2 className="text-sm font-semibold text-foreground">Profile Details</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Customize your public-facing username and bio.
-              </p>
-            </div>
+          {/* Tab bar */}
+          <div className="flex border-b border-border">
+            {(["profile", "password"] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "px-5 py-3 text-xs font-medium transition-colors duration-75 cursor-pointer border-b-2 -mb-px",
+                  activeTab === tab
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tab === "profile" ? "Profile Details" : "Change Password"}
+              </button>
+            ))}
+          </div>
 
+          {/* ── Tab: Profile Details ─────────────────────────────────────── */}
+          {activeTab === "profile" && (
             <form onSubmit={handleSaveProfile} className="p-5 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="username">Username</Label>
@@ -252,17 +258,10 @@ export function ProfilePage() {
                 </Button>
               </div>
             </form>
-          </section>
+          )}
 
-          {/* Change Password */}
-          <section className="bg-card border border-border">
-            <div className="px-5 py-3.5 border-b border-border">
-              <h2 className="text-sm font-semibold text-foreground">Change Password</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                You'll need your current password to confirm the change.
-              </p>
-            </div>
-
+          {/* ── Tab: Change Password ─────────────────────────────────────── */}
+          {activeTab === "password" && (
             <form onSubmit={handleChangePassword} className="p-5 flex flex-col gap-4">
               <PasswordField
                 id="old-password"
@@ -333,8 +332,9 @@ export function ProfilePage() {
                 </Button>
               </div>
             </form>
-          </section>
+          )}
         </div>
+
       </div>
     </div>
   )
@@ -342,13 +342,9 @@ export function ProfilePage() {
 
 // ─── MetaRow ───────────────────────────────────────────────────────────────────
 function MetaRow({
-  icon: Icon,
-  label,
-  children,
+  icon: Icon, label, children,
 }: {
-  icon:     React.ElementType
-  label:    string
-  children: React.ReactNode
+  icon: React.ElementType; label: string; children: React.ReactNode
 }) {
   return (
     <div className="flex items-center justify-between gap-2 min-w-0">
@@ -365,15 +361,9 @@ function MetaRow({
 function PasswordField({
   id, label, value, onChange, show, onToggle, disabled, placeholder, autoComplete,
 }: {
-  id:           string
-  label:        string
-  value:        string
-  onChange:     (v: string) => void
-  show:         boolean
-  onToggle:     () => void
-  disabled:     boolean
-  placeholder:  string
-  autoComplete: string
+  id: string; label: string; value: string; onChange: (v: string) => void
+  show: boolean; onToggle: () => void; disabled: boolean
+  placeholder: string; autoComplete: string
 }) {
   return (
     <div className="flex flex-col gap-1.5">
