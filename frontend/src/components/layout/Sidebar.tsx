@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useLocation } from "react-router-dom"
+import { useLocation, Link } from "react-router-dom"
 import {
   LayoutDashboard,
   ScanLine,
@@ -87,12 +87,12 @@ export function Sidebar() {
         {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
           const active = pathname === path
           return (
-          <button
+          <Link
             key={label}
+            to={path}
             title={collapsed ? label : undefined}
             className={cn(
-              // px-2.5 stays fixed in both states — icon stays perfectly centered at 26px
-              "flex items-center w-full px-2.5 py-2 text-sm cursor-pointer transition-colors duration-75",
+              "flex items-center w-full px-2.5 py-2 text-sm transition-colors duration-75",
               active
                 ? "bg-primary text-primary-foreground font-medium"
                 : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -122,7 +122,7 @@ export function Sidebar() {
                 Live
               </span>
             )}
-          </button>
+          </Link>
           )
         })}
 
@@ -133,11 +133,12 @@ export function Sidebar() {
         {BOTTOM_ITEMS.map(({ icon: Icon, label, path }) => {
           const active = pathname === path
           return (
-            <button
+            <Link
               key={label}
+              to={path}
               title={collapsed ? label : undefined}
               className={cn(
-                "flex items-center w-full px-2.5 py-2 text-sm cursor-pointer transition-colors duration-75",
+                "flex items-center w-full px-2.5 py-2 text-sm transition-colors duration-75",
                 active
                   ? "bg-primary text-primary-foreground font-medium"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -154,7 +155,7 @@ export function Sidebar() {
               >
                 {label}
               </span>
-            </button>
+            </Link>
           )
         })}
 
