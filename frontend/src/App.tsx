@@ -7,6 +7,27 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { HomePage } from "@/pages/HomePage"
 import { account } from "@/lib/appwrite"
+import { LoadingBar } from "@/components/ui/LoadingBar"
+
+// ─── Global fetch interceptor ──────────────────────────────────────────────────
+// Wraps window.fetch once at module load (not inside React lifecycle) so it
+// covers every request — Appwrite SDK, backend API calls, etc.
+// Skips health-check URLs that poll silently in the background.
+const SKIP_PATTERNS = ["/health", "/health/ready"]
+;(function installFetchInterceptor() {
+  const _fetch = window.fetch
+  window.fetch = async function (...args) {
+    const url = typeof args[0] === "string" ? args[0] : (args[0] as Request).url
+    const skip = SKIP_PATTERNS.some((p) => url.includes(p))
+
+    if (!skip) window.dispatchEvent(new Event("loading:start"))
+    try {
+      return await _fetch(...args)
+    } finally {
+      if (!skip) window.dispatchEvent(new Event("loading:done"))
+    }
+  }
+})()
 
 // ─── App ───────────────────────────────────────────────────────────────────────
 // Auth state is driven by Appwrite — account.get() resolves if a session exists.
@@ -20,13 +41,20 @@ function App() {
       .catch(() => setIsAuthenticated(false))
   }, [])
 
-  // Show blank screen while session is being resolved
+  // LoadingBar is always mounted so it catches the initial session check.
+  // Blank overlay prevents flash of unauthenticated content while resolving.
   if (isAuthenticated === null) {
-    return <div className="fixed inset-0 bg-background" />
+    return (
+      <>
+        <LoadingBar />
+        <div className="fixed inset-0 bg-background" />
+      </>
+    )
   }
 
   return (
     <BrowserRouter>
+      <LoadingBar />
       <Routes>
 
         {/* ── Root redirect ──────────────────────────────────────────────────── */}
