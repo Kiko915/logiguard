@@ -69,7 +69,7 @@ export function LoginPage() {
     <div className="flex h-screen w-screen overflow-hidden bg-background">
 
       {/* ── Left Panel — Branding ──────────────────────────────────────────────── */}
-      <div className="hidden lg:flex flex-col w-[55%] h-full bg-background border-r border-border px-14 py-8 overflow-hidden items-center">
+      <div className="light-panel hidden lg:flex flex-col w-[55%] h-full bg-background border-r border-border px-14 py-8 overflow-hidden items-center">
 
         {/* Headline */}
         <div className="mt-8 text-center">

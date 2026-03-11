@@ -149,6 +149,31 @@ async function setupScanLogs() {
   }
 }
 
+async function setupNotifications() {
+  console.log("\n🔔  notifications")
+  await createCollection("notifications", "Notifications")
+  await wait(500)
+
+  await attr(() => db.createStringAttribute (DATABASE_ID, "notifications", "user_id", 36,   true),                              "user_id (string)")
+  await attr(() => db.createStringAttribute (DATABASE_ID, "notifications", "title",   128,  true),                              "title (string)")
+  await attr(() => db.createStringAttribute (DATABASE_ID, "notifications", "message", 512,  true),                              "message (string)")
+  await attr(() => db.createEnumAttribute   (DATABASE_ID, "notifications", "type",    ["info","warning","error","success"], true), "type (enum)")
+  await attr(() => db.createBooleanAttribute(DATABASE_ID, "notifications", "read",    true),                                    "read (boolean)")
+  await attr(() => db.createStringAttribute (DATABASE_ID, "notifications", "link",    256,  false),                             "link (string, optional)")
+
+  process.stdout.write("       ⏳ waiting for attributes…")
+  await waitForAttributes("notifications")
+  console.log(" ready")
+  try {
+    await db.createIndex(DATABASE_ID, "notifications", "idx_user_id",   "key",  ["user_id"])
+    await db.createIndex(DATABASE_ID, "notifications", "idx_user_read", "key",  ["user_id", "read"])
+    console.log("       + indexes created")
+  } catch (e) {
+    if (e?.code !== 409) throw e
+    console.log("       – indexes already exist")
+  }
+}
+
 async function setupSimulationRuns() {
   console.log("\n📊  simulation_runs")
   await createCollection("simulation_runs", "Simulation Runs")
@@ -171,6 +196,7 @@ try {
   await setupPackages()
   await setupScanLogs()
   await setupSimulationRuns()
+  await setupNotifications()
 
   console.log("\n✅  All collections ready. You can now start the backend.\n")
 } catch (err) {

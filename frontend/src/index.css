@@ -231,6 +231,28 @@
   --radius: 0px;
 }
 
+/* ─── Force Light Panel ──────────────────────────────────────────────────────
+   Apply .light-panel to any element that must stay in light mode regardless
+   of the active theme (e.g. the login page left branding panel).
+   Re-declares CSS variables to their :root (light) values so .dark on the
+   <html> element cannot override them for this subtree.
+   ─────────────────────────────────────────────────────────────────────────── */
+.light-panel {
+  --background:             oklch(0.985 0 0);
+  --foreground:             oklch(0.13  0 0);
+  --card:                   oklch(1     0 0);
+  --card-foreground:        oklch(0.13  0 0);
+  --muted:                  oklch(0.96  0 0);
+  --muted-foreground:       oklch(0.50  0 0);
+  --border:                 oklch(0.88  0 0);
+  --primary:                oklch(0.14  0 0);
+  --primary-foreground:     oklch(0.98  0 0);
+  --success:                oklch(0.50  0.130 150);
+  --destructive:            oklch(0.50  0.190 25);
+  --warning:                oklch(0.66  0.155 75);
+  color-scheme: light;
+}
+
 /* ─── Base Layer ─────────────────────────────────────────────────────────────
    Global resets and defaults that enforce the design system.
    ─────────────────────────────────────────────────────────────────────────── */

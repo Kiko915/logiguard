@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react"
-import { Bell, LogOut, RefreshCw } from "lucide-react"
+import { LogOut, RefreshCw } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
+import { NotificationsPopover } from "@/components/layout/NotificationsPopover"
 
 interface HeaderProps {
   title:     string
@@ -83,11 +84,7 @@ export function Header({ title, subtitle }: HeaderProps) {
         </Button>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
-          <Bell className="w-3.5 h-3.5" />
-          {/* Unread dot */}
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-destructive" />
-        </Button>
+        <NotificationsPopover />
 
         <div className="w-px h-5 bg-border" />
 
