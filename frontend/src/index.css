@@ -388,6 +388,26 @@
   }
 }
 
+/* ─── Skeleton Shimmer ───────────────────────────────────────────────────────
+   Professional left-to-right shimmer for loading states.
+   Usage: add class="skeleton" to any placeholder div.
+   ─────────────────────────────────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position:  200% center; }
+  100% { background-position: -200% center; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted)            0%,
+    var(--border)          50%,
+    var(--muted)           100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
 /* ─── Utility Layer ──────────────────────────────────────────────────────────
    One-off helpers for data-dense interfaces.
    ─────────────────────────────────────────────────────────────────────────── */

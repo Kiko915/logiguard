@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import {
   ScanLine,
   Package,
@@ -14,6 +15,7 @@ import {
   Activity,
   BarChart3,
 } from "lucide-react"
+import { DashboardSkeleton } from "@/pages/DashboardSkeleton"
 import {
   AreaChart,
   Area,
@@ -185,9 +187,25 @@ function BarTooltip({ active, payload, label }: {
   )
 }
 
+// Persists across navigations — set to true after the first successful load
+// so returning to the dashboard never re-shows the skeleton.
+let dashboardLoaded = false
+
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 export function HomePage() {
   const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
+
+  const [loading, setLoading] = useState(!dashboardLoaded)
+  useEffect(() => {
+    if (dashboardLoaded) return
+    const t = setTimeout(() => {
+      dashboardLoaded = true
+      setLoading(false)
+    }, 1400)
+    return () => clearTimeout(t)
+  }, [])
+
+  if (loading) return <DashboardSkeleton />
 
   return (
     <div className="flex flex-col gap-4 max-w-[1400px]">
