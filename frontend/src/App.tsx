@@ -5,10 +5,25 @@ import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage"
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage"
 import { NotFoundPage } from "@/pages/NotFoundPage"
 import { ProfilePage } from "@/pages/ProfilePage"
+import { SettingsPage } from "@/pages/SettingsPage"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { HomePage } from "@/pages/HomePage"
 import { LoadingBar } from "@/components/ui/LoadingBar"
+
+// ─── Theme bootstrap ───────────────────────────────────────────────────────────
+// Runs once at module load before any React render to avoid a flash of the
+// wrong theme. Mirrors the logic inside useSettings.
+;(function bootstrapTheme() {
+  try {
+    const raw   = localStorage.getItem("lg_settings")
+    const theme = raw ? (JSON.parse(raw)?.theme ?? "system") : "system"
+    const dark  =
+      theme === "dark" ||
+      (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+    document.documentElement.classList.toggle("dark", dark)
+  } catch { /* ignore */ }
+})()
 
 // ─── Global fetch interceptor ──────────────────────────────────────────────────
 // Wraps window.fetch once at module load (not inside React lifecycle) so it
@@ -88,6 +103,13 @@ function AppRoutes() {
         path="/profile"
         element={user
           ? <AppLayout title="Profile"><ProfilePage /></AppLayout>
+          : <Navigate to="/auth/login" replace />
+        }
+      />
+      <Route
+        path="/settings"
+        element={user
+          ? <AppLayout title="Settings"><SettingsPage /></AppLayout>
           : <Navigate to="/auth/login" replace />
         }
       />

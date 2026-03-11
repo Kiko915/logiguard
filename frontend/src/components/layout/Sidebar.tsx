@@ -54,7 +54,7 @@ export function Sidebar() {
           alt="LG"
           className={cn(
             "absolute left-1/2 -translate-x-1/2 h-6 w-6 object-contain",
-            "transition-opacity duration-200",
+            "transition-opacity duration-200 dark:invert",
             collapsed ? "opacity-100" : "opacity-0 pointer-events-none",
           )}
         />
@@ -70,7 +70,7 @@ export function Sidebar() {
           <img
             src="/branding/logiguard_wordmark.png"
             alt="LogiGuard"
-            className="h-5 w-auto object-contain"
+            className="h-5 w-auto object-contain dark:invert"
           />
           <span className="text-2xs font-medium text-muted-foreground bg-muted px-1.5 py-0.5 border border-border shrink-0">
             v2.0
