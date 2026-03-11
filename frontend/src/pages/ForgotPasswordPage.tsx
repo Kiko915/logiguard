@@ -38,14 +38,14 @@ export function ForgotPasswordPage() {
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-muted">
-      <div className="w-full max-w-sm bg-[#FFFFFF] border border-border p-8">
+      <div className="w-full max-w-sm bg-card border border-border p-8">
 
         {/* Wordmark */}
         <div className="flex justify-center mb-8">
           <img
             src="/branding/logiguard_wordmark.png"
             alt="LogiGuard"
-            className="h-6 w-auto object-contain"
+            className="h-6 w-auto object-contain dark:invert"
           />
         </div>
 

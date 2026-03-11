@@ -7,7 +7,7 @@ export function NotFoundPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#FFFFFF]">
+    <div className="flex flex-col h-screen w-screen bg-background">
 
       {/* ── Top bar ───────────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between h-12 px-8 border-b border-border shrink-0">
@@ -15,7 +15,7 @@ export function NotFoundPage() {
           <img
             src="/branding/logiguard_wordmark.png"
             alt="LogiGuard"
-            className="h-5 w-auto object-contain"
+            className="h-5 w-auto object-contain dark:invert"
           />
         </Link>
         <span className="text-xs font-mono text-muted-foreground">

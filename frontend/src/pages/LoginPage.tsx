@@ -69,7 +69,7 @@ export function LoginPage() {
     <div className="flex h-screen w-screen overflow-hidden bg-background">
 
       {/* ── Left Panel — Branding ──────────────────────────────────────────────── */}
-      <div className="hidden lg:flex flex-col w-[55%] h-full bg-[#FFFFFF] border-r border-border px-14 py-8 overflow-hidden items-center">
+      <div className="hidden lg:flex flex-col w-[55%] h-full bg-background border-r border-border px-14 py-8 overflow-hidden items-center">
 
         {/* Headline */}
         <div className="mt-8 text-center">
@@ -128,7 +128,7 @@ export function LoginPage() {
             <img
               src="/branding/logiguard_wordmark.png"
               alt="LogiGuard"
-              className="h-10 w-auto object-contain"
+              className="h-10 w-auto object-contain dark:invert"
             />
           </div>
 
