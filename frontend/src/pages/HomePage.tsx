@@ -1,6 +1,5 @@
 import {
   ScanLine,
-  Activity,
   Package,
   PackageX,
   PackageOpen,
@@ -12,11 +11,26 @@ import {
   Cpu,
   Database,
   Boxes,
-  FlaskConical,
+  Activity,
+  BarChart3,
 } from "lucide-react"
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+} from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
   Table,
@@ -27,40 +41,79 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+// ─── Chart Colors (approximated from design system tokens) ────────────────────
+const C = {
+  good:    "#4d8f68",   // success green  ≈ oklch(0.50 0.130 150)
+  damaged: "#b54343",   // destructive red ≈ oklch(0.50 0.190 25)
+  empty:   "#9ca3af",   // muted gray
+  primary: "#242424",   // near-black
+  text:    "#737373",   // muted-foreground
+  grid:    "#e5e5e5",   // border
+  warn:    "#c9973a",   // warning amber
+}
+
 // ─── Mock Data ─────────────────────────────────────────────────────────────────
+
 const STATS = [
   {
-    label:   "Total Scans Today",
-    value:   "1,247",
-    delta:   "+12.4%",
-    up:      true,
-    icon:    Boxes,
-    sub:     "vs. yesterday",
+    label: "Total Scans Today",
+    value: "1,247",
+    delta: "+12.4%",
+    up:    true,
+    icon:  Boxes,
+    sub:   "vs. yesterday",
   },
   {
-    label:   "Good Packages",
-    value:   "1,183",
-    delta:   "94.9%",
-    up:      true,
-    icon:    Package,
-    sub:     "pass rate",
+    label: "Good Packages",
+    value: "1,183",
+    delta: "94.9%",
+    up:    true,
+    icon:  Package,
+    sub:   "pass rate",
   },
   {
-    label:   "Damaged Flagged",
-    value:   "47",
-    delta:   "+3",
-    up:      false,
-    icon:    PackageX,
-    sub:     "since last hour",
+    label: "Damaged Flagged",
+    value: "47",
+    delta: "+3",
+    up:    false,
+    icon:  PackageX,
+    sub:   "since last hour",
   },
   {
-    label:   "Avg Scan Time",
-    value:   "2.84s",
-    delta:   "-0.12s",
-    up:      true,
-    icon:    Clock,
-    sub:     "µ = 1,268/hr",
+    label: "Avg Scan Time",
+    value: "2.84s",
+    delta: "-0.12s",
+    up:    true,
+    icon:  Clock,
+    sub:   "µ = 1,268/hr",
   },
+]
+
+/** Hourly breakdown over a 12-hour shift (08:00–20:00). Last entry is partial. */
+const HOURLY_DATA = [
+  { hour: "08:00", good: 89,  damaged: 4, empty: 2 },
+  { hour: "09:00", good: 112, damaged: 7, empty: 5 },
+  { hour: "10:00", good: 134, damaged: 5, empty: 3 },
+  { hour: "11:00", good: 127, damaged: 8, empty: 4 },
+  { hour: "12:00", good: 98,  damaged: 3, empty: 2 },
+  { hour: "13:00", good: 115, damaged: 5, empty: 3 },
+  { hour: "14:00", good: 128, damaged: 7, empty: 3 },
+  { hour: "14:30", good: 64,  damaged: 3, empty: 1 },
+]
+
+const STATUS_DIST = [
+  { name: "Good",    value: 1183 },
+  { name: "Damaged", value: 47   },
+  { name: "Empty",   value: 17   },
+]
+
+const DONUT_COLORS = [C.good, C.damaged, C.empty]
+
+const MM1_BAR_DATA = [
+  { label: "ρ (Util.)", value: 0.71 },
+  { label: "L (Items)", value: 2.45 },
+  { label: "Wq (s)",    value: 0.32 },
+  { label: "P(ovfl)",   value: 0.042 },
 ]
 
 const SCAN_LOGS = [
@@ -74,10 +127,68 @@ const SCAN_LOGS = [
   { id: "h8e5c2a6", status: "good",    confidence: 99.0, scan_ms: 2070, tx: "0x3a8c…e562", time: "14:30:28" },
 ] as const
 
-const MM1_METRICS = { rho: 0.71, L: 2.45, Wq: "0.32s", overflow_prob: "4.2%" }
+// ─── Custom Tooltip Components ─────────────────────────────────────────────────
+
+function AreaTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: { name: string; value: number; color: string }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  const total = payload.reduce((s, p) => s + p.value, 0)
+  return (
+    <div className="bg-card border border-border px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-foreground mb-1.5">{label}</p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center gap-2 leading-5">
+          <span style={{ width: 6, height: 6, background: p.color, display: "inline-block", flexShrink: 0 }} />
+          <span className="text-muted-foreground capitalize w-14">{p.name}</span>
+          <span className="font-medium tabular-nums">{p.value}</span>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 leading-5 mt-1 pt-1 border-t border-border">
+        <span style={{ width: 6, height: 6, display: "inline-block", flexShrink: 0 }} />
+        <span className="text-muted-foreground w-14">Total</span>
+        <span className="font-semibold tabular-nums">{total}</span>
+      </div>
+    </div>
+  )
+}
+
+function PieTooltip({ active, payload }: {
+  active?: boolean
+  payload?: { name: string; value: number; payload: { name: string; value: number } }[]
+}) {
+  if (!active || !payload?.length) return null
+  const p    = payload[0]
+  const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
+  const pct  = ((p.value / total) * 100).toFixed(1)
+  return (
+    <div className="bg-card border border-border px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-foreground">{p.name}</p>
+      <p className="text-muted-foreground tabular-nums">{p.value.toLocaleString()} · {pct}%</p>
+    </div>
+  )
+}
+
+function BarTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: { value: number }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card border border-border px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-foreground">{label}</p>
+      <p className="text-muted-foreground tabular-nums">{payload[0].value.toFixed(3)}</p>
+    </div>
+  )
+}
 
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 export function HomePage() {
+  const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
+
   return (
     <div className="flex flex-col gap-4 max-w-[1400px]">
 
@@ -90,9 +201,7 @@ export function HomePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            Export Report
-          </Button>
+          <Button variant="outline" size="sm">Export Report</Button>
           <Button size="sm">
             <ScanLine className="w-3.5 h-3.5" />
             Start Scan
@@ -107,76 +216,206 @@ export function HomePage() {
         ))}
       </div>
 
-      {/* ── Mode Cards + Queue Metrics ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Live Scanner Mode */}
-        <ModeCard
-          icon={ScanLine}
-          iconBg="bg-foreground"
-          iconColor="text-background"
-          title="Live Scanner"
-          badge="Mode 1"
-          badgeVariant="secondary"
-          description="Real-time AI inspection using TensorFlow.js. Classifies packages as Good, Damaged, or Empty. Completed scans are logged immutably to the Ganache blockchain."
-          stats={[
-            { label: "Model",       value: "TF.js MobileNet" },
-            { label: "Blockchain",  value: "Ganache Local"   },
-            { label: "Last scan",   value: "4s ago"          },
-          ]}
-          actionLabel="Launch Scanner"
-          actionVariant="default"
-          statusDot="success"
-          statusLabel="Ready"
-        />
+      {/* ── Charts Row ────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-3">
 
-        {/* Simulation Mode */}
-        <ModeCard
-          icon={FlaskConical}
-          iconBg="bg-muted"
-          iconColor="text-foreground"
-          title="Simulation Dashboard"
-          badge="Mode 2"
-          badgeVariant="secondary"
-          description="M/M/1 Discrete-Event Simulation with 1,000+ Monte Carlo replications. Predicts queue overflow probability and system utilization across a full shift."
-          stats={[
-            { label: "Model",        value: "M/M/1 Queue"   },
-            { label: "Replications", value: "1,000"         },
-            { label: "Last run",     value: "2m ago"        },
-          ]}
-          actionLabel="Open Simulation"
-          actionVariant="outline"
-          statusDot="stable"
-          statusLabel="Idle"
-        />
-
-        {/* Queue Metrics Panel */}
+        {/* Hourly Scan Throughput */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="w-3.5 h-3.5" />
-              M/M/1 Live Metrics
+              Scan Throughput
             </CardTitle>
-            <CardDescription>Theoretical — current shift params</CardDescription>
+            <CardDescription>Packages inspected per hour · Current shift</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            <MetricRow label="Utilization (ρ)" value={MM1_METRICS.rho.toString()}>
-              <UtilizationBar rho={MM1_METRICS.rho} />
-            </MetricRow>
-            <Separator />
-            <MetricRow label="Avg Items in System (L)"   value={MM1_METRICS.L.toString()} />
-            <MetricRow label="Avg Wait Time (Wq)"        value={MM1_METRICS.Wq} />
-            <MetricRow label="Overflow Probability"       value={MM1_METRICS.overflow_prob} />
-            <Separator />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Queue Stability</span>
-              <Badge variant="stable">Stable</Badge>
+          <CardContent className="p-4">
+            <div className="flex gap-4 items-stretch">
+              {/* Chart */}
+              <div className="flex-1 min-w-0">
+              <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={HOURLY_DATA} margin={{ top: 4, right: 0, left: -28, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="grad-good" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="10%" stopColor={C.good}    stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={C.good}    stopOpacity={0.03} />
+                  </linearGradient>
+                  <linearGradient id="grad-damaged" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="10%" stopColor={C.damaged} stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={C.damaged} stopOpacity={0.03} />
+                  </linearGradient>
+                  <linearGradient id="grad-empty" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="10%" stopColor={C.empty}   stopOpacity={0.30} />
+                    <stop offset="95%" stopColor={C.empty}   stopOpacity={0.03} />
+                  </linearGradient>
+                </defs>
+
+                <CartesianGrid strokeDasharray="2 4" stroke={C.grid} vertical={false} />
+                <XAxis
+                  dataKey="hour"
+                  tick={{ fontSize: 10, fill: C.text }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: C.text }}
+                  axisLine={false} tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<AreaTooltip />} cursor={{ stroke: C.grid, strokeWidth: 1 }} />
+
+                {/* Stacked: empty first (bottom), then damaged, then good (top) */}
+                <Area
+                  type="monotone" dataKey="empty"   stackId="s"
+                  stroke={C.empty}   fill="url(#grad-empty)"
+                  strokeWidth={1.5} dot={false}
+                />
+                <Area
+                  type="monotone" dataKey="damaged" stackId="s"
+                  stroke={C.damaged} fill="url(#grad-damaged)"
+                  strokeWidth={1.5} dot={false}
+                />
+                <Area
+                  type="monotone" dataKey="good"    stackId="s"
+                  stroke={C.good}    fill="url(#grad-good)"
+                  strokeWidth={1.5}
+                  dot={{ r: 2, fill: C.good, strokeWidth: 0 }}
+                  activeDot={{ r: 3, fill: C.good, strokeWidth: 0 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+              </div>
+
+              {/* Right-side legend */}
+              <div className="flex flex-col justify-center gap-3.5 shrink-0 border-l border-border pl-4 pr-1 py-2">
+                <LegendItem color={C.good}    label="Good"    count="1,183" />
+                <LegendItem color={C.damaged} label="Damaged" count="47"    />
+                <LegendItem color={C.empty}   label="Empty"   count="17"    />
+              </div>
             </div>
           </CardContent>
-          <CardFooter className="gap-2">
-            <Button variant="ghost" size="xs" className="text-xs gap-1">
-              <Activity className="w-3 h-3" /> Run Simulation
-            </Button>
-          </CardFooter>
+        </Card>
+
+        {/* Status Distribution Donut */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-3.5 h-3.5" />
+              Status Distribution
+            </CardTitle>
+            <CardDescription>Today's scan outcomes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={136}>
+              <PieChart>
+                <Pie
+                  data={STATUS_DIST}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={42}
+                  outerRadius={62}
+                  paddingAngle={2}
+                  dataKey="value"
+                  startAngle={90}
+                  endAngle={-270}
+                  strokeWidth={0}
+                >
+                  {STATUS_DIST.map((_, i) => (
+                    <Cell key={i} fill={DONUT_COLORS[i]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<PieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+
+            {/* Legend rows */}
+            <div className="flex flex-col gap-1.5 mt-2">
+              {STATUS_DIST.map((d, i) => (
+                <div key={d.name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span style={{ width: 8, height: 8, background: DONUT_COLORS[i], display: "inline-block", flexShrink: 0 }} />
+                    <span className="text-xs text-muted-foreground">{d.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium tabular-nums">{d.value.toLocaleString()}</span>
+                    <span className="text-2xs text-muted-foreground tabular-nums w-10 text-right">
+                      {((d.value / total) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── M/M/1 Queue Metrics ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-3">
+
+        {/* Queue Metrics BarChart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5" />
+              M/M/1 Queue Analysis
+            </CardTitle>
+            <CardDescription>Theoretical metrics — current shift parameters</CardDescription>
+            <Badge variant="stable" className="text-2xs self-start">Stable</Badge>
+          </CardHeader>
+          <CardContent className="pr-4">
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={MM1_BAR_DATA} margin={{ top: 4, right: 0, left: -28, bottom: 0 }} barSize={28}>
+                <CartesianGrid strokeDasharray="2 4" stroke={C.grid} horizontal={true} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: C.text }}
+                  axisLine={false} tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: C.text }}
+                  axisLine={false} tickLine={false}
+                  domain={[0, 3]}
+                  allowDecimals
+                />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: "#f5f5f5" }} />
+                <Bar dataKey="value" radius={[0, 0, 0, 0]}>
+                  {MM1_BAR_DATA.map((d, i) => (
+                    <Cell
+                      key={i}
+                      fill={d.value >= 0.9 ? C.damaged : d.value >= 0.7 ? C.warn : C.primary}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Queue Key Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5" />
+              Queue Key Values
+            </CardTitle>
+            <CardDescription>λ = 900/hr · μ = 1,268/hr</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <QueueMetric label="Utilization (ρ)"         value="0.71"  status="warn" />
+            <Separator />
+            <QueueMetric label="Avg Items in System (L)"  value="2.45"  />
+            <QueueMetric label="Avg Wait Time (Wq)"       value="0.32 s" />
+            <QueueMetric label="Overflow Probability"     value="4.2%"  />
+            <Separator />
+            {/* Utilization bar */}
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-2xs text-muted-foreground">Capacity used</span>
+                <span className="text-2xs font-medium">71%</span>
+              </div>
+              <div className="w-full h-1 bg-muted">
+                <div className="h-full bg-warning transition-all" style={{ width: "71%" }} />
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
@@ -218,12 +457,9 @@ export function HomePage() {
             <TableBody>
               {SCAN_LOGS.map((log) => (
                 <TableRow key={log.id}>
-                  {/* Package ID */}
                   <TableCell>
                     <span className="mono-value text-muted-foreground">{log.id}…</span>
                   </TableCell>
-
-                  {/* Status Badge */}
                   <TableCell>
                     <Badge
                       variant={
@@ -231,14 +467,12 @@ export function HomePage() {
                         log.status === "damaged" ? "damaged" : "empty"
                       }
                     >
-                      {log.status === "good"    && <Package  className="w-2.5 h-2.5" />}
-                      {log.status === "damaged" && <PackageX className="w-2.5 h-2.5" />}
+                      {log.status === "good"    && <Package     className="w-2.5 h-2.5" />}
+                      {log.status === "damaged" && <PackageX    className="w-2.5 h-2.5" />}
                       {log.status === "empty"   && <PackageOpen className="w-2.5 h-2.5" />}
                       {log.status}
                     </Badge>
                   </TableCell>
-
-                  {/* Confidence */}
                   <TableCell className="text-right">
                     <span className={
                       log.confidence >= 95 ? "text-success font-medium" :
@@ -248,13 +482,9 @@ export function HomePage() {
                       {log.confidence.toFixed(1)}%
                     </span>
                   </TableCell>
-
-                  {/* Scan Time */}
                   <TableCell className="text-right text-muted-foreground">
                     {(log.scan_ms / 1000).toFixed(2)}s
                   </TableCell>
-
-                  {/* Blockchain TX */}
                   <TableCell>
                     {log.tx === "—" ? (
                       <span className="text-muted-foreground text-xs">Not logged</span>
@@ -265,8 +495,6 @@ export function HomePage() {
                       </span>
                     )}
                   </TableCell>
-
-                  {/* Time */}
                   <TableCell className="text-right text-muted-foreground tabular-nums">
                     {log.time}
                   </TableCell>
@@ -279,18 +507,16 @@ export function HomePage() {
 
       {/* ── System Info Row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2">
-        <InfoTile icon={Cpu}      label="AI Engine"    value="TensorFlow.js"         sub="MobileNet v2 — in-browser" />
-        <InfoTile icon={Link}     label="Blockchain"   value="Ganache Testnet"        sub="Chain ID 1337 · Port 8545"  />
-        <InfoTile icon={Database} label="Database"     value="Supabase PostgreSQL"    sub="Row-level security enabled" />
+        <InfoTile icon={Cpu}      label="AI Engine"  value="TensorFlow.js"   sub="MobileNet v2 — in-browser"      />
+        <InfoTile icon={Link}     label="Blockchain" value="Ganache Testnet"  sub="Chain ID 1337 · Port 8545"      />
+        <InfoTile icon={Database} label="Database"   value="Appwrite"         sub="Documents DB · Collections ×3"  />
       </div>
     </div>
   )
 }
 
 // ─── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({
-  label, value, delta, up, icon: Icon, sub,
-}: typeof STATS[number]) {
+function StatCard({ label, value, delta, up, icon: Icon, sub }: typeof STATS[number]) {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between gap-2">
@@ -301,7 +527,7 @@ function StatCard({
       <div className="flex items-center gap-1.5">
         <span className={`stat-card-delta flex items-center gap-0.5 ${up ? "text-success" : "text-destructive"}`}>
           {up
-            ? <ArrowUpRight className="w-3 h-3" />
+            ? <ArrowUpRight   className="w-3 h-3" />
             : <ArrowDownRight className="w-3 h-3" />
           }
           {delta}
@@ -312,99 +538,34 @@ function StatCard({
   )
 }
 
-// ─── Mode Card ─────────────────────────────────────────────────────────────────
-function ModeCard({
-  icon: Icon, iconBg, iconColor, title, badge, badgeVariant, description,
-  stats, actionLabel, actionVariant, statusDot, statusLabel,
-}: {
-  icon: React.ElementType
-  iconBg: string
-  iconColor: string
-  title: string
-  badge: string
-  badgeVariant: "secondary" | "default"
-  description: string
-  stats: { label: string; value: string }[]
-  actionLabel: string
-  actionVariant: "default" | "outline"
-  statusDot: "success" | "stable"
-  statusLabel: string
-}) {
+// ─── Legend Item (right-side vertical legend) ──────────────────────────────────
+function LegendItem({ color, label, count }: { color: string; label: string; count: string }) {
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div className={`w-8 h-8 flex items-center justify-center shrink-0 ${iconBg}`}>
-            <Icon className={`w-4 h-4 ${iconColor}`} strokeWidth={2} />
-          </div>
-          <Badge variant={badgeVariant} className="text-2xs shrink-0">{badge}</Badge>
-        </div>
-        <CardTitle className="mt-2">{title}</CardTitle>
-        <CardDescription className="text-xs leading-relaxed">{description}</CardDescription>
-      </CardHeader>
-
-      <CardContent className="pt-0 flex-1">
-        <div className="border border-border divide-y divide-border">
-          {stats.map((s) => (
-            <div key={s.label} className="flex items-center justify-between px-2.5 py-1.5">
-              <span className="text-xs text-muted-foreground">{s.label}</span>
-              <span className="text-xs font-medium text-foreground">{s.value}</span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-
-      <CardFooter className="justify-between">
-        <span className={`flex items-center gap-1 text-xs font-medium ${statusDot === "success" ? "text-success" : "text-muted-foreground"}`}>
-          <span className={`w-1.5 h-1.5 inline-block ${statusDot === "success" ? "bg-success" : "bg-muted-foreground"}`} />
-          {statusLabel}
-        </span>
-        <Button variant={actionVariant} size="sm" className="gap-1">
-          {actionLabel} <ArrowUpRight className="w-3 h-3" />
-        </Button>
-      </CardFooter>
-    </Card>
-  )
-}
-
-// ─── Utilization Bar ───────────────────────────────────────────────────────────
-function UtilizationBar({ rho }: { rho: number }) {
-  const pct = Math.min(rho * 100, 100)
-  const color = rho < 0.7 ? "bg-success" : rho < 0.9 ? "bg-warning" : "bg-destructive"
-  return (
-    <div className="mt-1 w-full h-1 bg-muted">
-      <div className={`h-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5">
+        <span style={{ width: 8, height: 8, background: color, display: "inline-block", flexShrink: 0 }} />
+        <span className="text-2xs text-muted-foreground capitalize">{label}</span>
+      </div>
+      <span className="text-sm font-semibold tabular-nums pl-[14px]">{count}</span>
     </div>
   )
 }
 
-// ─── Metric Row ────────────────────────────────────────────────────────────────
-function MetricRow({
-  label, value, children,
-}: {
-  label: string
-  value: string
-  children?: React.ReactNode
-}) {
+// ─── Queue Metric Row ──────────────────────────────────────────────────────────
+function QueueMetric({ label, value, status }: { label: string; value: string; status?: "warn" }) {
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs font-semibold tabular-nums">{value}</span>
-      </div>
-      {children}
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-xs font-semibold tabular-nums ${status === "warn" ? "text-warning" : ""}`}>
+        {value}
+      </span>
     </div>
   )
 }
 
 // ─── Info Tile ─────────────────────────────────────────────────────────────────
-function InfoTile({
-  icon: Icon, label, value, sub,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string
-  sub: string
+function InfoTile({ icon: Icon, label, value, sub }: {
+  icon: React.ElementType; label: string; value: string; sub: string
 }) {
   return (
     <div className="flex items-start gap-3 border border-border p-3 bg-card">
