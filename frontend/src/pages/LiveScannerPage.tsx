@@ -217,9 +217,9 @@ export function LiveScannerPage() {
         </div>
 
         {/* ── Right Column: Recent Activity ──────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <Card className="flex-1 flex flex-col">
-            <CardHeader className="border-b border-border bg-muted/30">
+        <div className="flex flex-col gap-4 min-h-0">
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="border-b border-border bg-muted/30 shrink-0">
               <div className="flex flex-col gap-1 w-full">
                 <CardTitle className="flex items-center gap-2 text-md">
                   <History className="w-4 h-4 text-muted-foreground" />
