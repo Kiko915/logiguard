@@ -8,6 +8,7 @@ import { ProfilePage } from "@/pages/ProfilePage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
+import { DesktopOnlyGuard } from "@/components/layout/DesktopOnlyGuard";
 import { HomePage } from "@/pages/HomePage";
 import { LiveScannerPage } from "@/pages/LiveScannerPage";
 import { LoadingBar } from "@/components/ui/LoadingBar";
@@ -56,8 +57,10 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <LoadingBar />
-        <AppRoutes />
+        <DesktopOnlyGuard>
+          <LoadingBar />
+          <AppRoutes />
+        </DesktopOnlyGuard>
       </BrowserRouter>
     </AuthProvider>
   );
