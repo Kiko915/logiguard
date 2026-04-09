@@ -10,8 +10,11 @@ import {
   Activity,
   History,
   Settings2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -63,6 +66,8 @@ export function LiveScannerPage() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [recentScans, setRecentScans] = useState<ScanResult[]>(MOCK_HISTORY);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [confidenceThreshold, setConfidenceThreshold] = useState("85");
   const videoRef = useRef<HTMLDivElement>(null);
 
   // Mock scanning effect
@@ -111,7 +116,11 @@ export function LiveScannerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsConfigOpen(true)}
+          >
             <Settings2 className="w-3.5 h-3.5 mr-2" />
             Config
           </Button>
@@ -305,6 +314,71 @@ export function LiveScannerPage() {
           </Card>
         </div>
       </div>
+
+      {/* ── Config Modal ──────────────────────────────────────────────────────── */}
+      {isConfigOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-card border border-border shadow-md flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+              <h3 className="text-md font-semibold text-foreground">
+                Scanner Configuration
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsConfigOpen(false)}
+                className="h-6 w-6"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </div>
+            <div className="p-4 flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="threshold" className="text-xs">
+                  Confidence Threshold (%)
+                </Label>
+                <Input
+                  id="threshold"
+                  type="number"
+                  value={confidenceThreshold}
+                  onChange={(e) => setConfidenceThreshold(e.target.value)}
+                  min="50"
+                  max="100"
+                />
+                <p className="text-2xs text-muted-foreground">
+                  Scans below this confidence will be flagged for manual review.
+                </p>
+              </div>
+              <div className="flex items-center justify-between pt-2">
+                <Label
+                  className="text-xs cursor-pointer select-none flex-1"
+                  htmlFor="auto-pause"
+                >
+                  Auto-pause on defect
+                </Label>
+                <input
+                  type="checkbox"
+                  id="auto-pause"
+                  defaultChecked
+                  className="w-3.5 h-3.5 accent-primary cursor-pointer"
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t border-border bg-muted/20 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsConfigOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={() => setIsConfigOpen(false)}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
