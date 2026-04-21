@@ -1,0 +1,14 @@
+{
+  "name": "logiguard-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"GANACHE,BACKEND,FRONTEND\" --prefix-colors \"yellow,cyan,magenta\" \"npm run ganache\" \"npm run backend\" \"npm run frontend\"",
+    "ganache": "cd backend && npx ganache --port 8545 --chain.chainId 1337 --deterministic",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

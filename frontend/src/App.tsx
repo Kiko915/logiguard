@@ -11,6 +11,7 @@ import { Header } from "@/components/layout/Header";
 import { DesktopOnlyGuard } from "@/components/layout/DesktopOnlyGuard";
 import { HomePage } from "@/pages/HomePage";
 import { LiveScannerPage } from "@/pages/LiveScannerPage";
+import { ScanLogsPage } from "@/pages/ScanLogsPage";
 import { LoadingBar } from "@/components/ui/LoadingBar";
 
 // ─── Theme bootstrap ───────────────────────────────────────────────────────────
@@ -119,6 +120,18 @@ function AppRoutes() {
           user ? (
             <AppLayout title="Live Scanner">
               <LiveScannerPage />
+            </AppLayout>
+          ) : (
+            <Navigate to="/auth/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/scan-logs"
+        element={
+          user ? (
+            <AppLayout title="Scan Logs">
+              <ScanLogsPage />
             </AppLayout>
           ) : (
             <Navigate to="/auth/login" replace />
