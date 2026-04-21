@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   ScanLine,
   Package,
@@ -195,6 +196,7 @@ let dashboardLoaded = false
 export function HomePage() {
   const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
 
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(!dashboardLoaded)
   useEffect(() => {
     if (dashboardLoaded) return
@@ -220,7 +222,7 @@ export function HomePage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm">Export Report</Button>
-          <Button size="sm">
+          <Button size="sm" onClick={() => navigate("/live-scanner")}>
             <ScanLine className="w-3.5 h-3.5" />
             Start Scan
           </Button>

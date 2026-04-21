@@ -5,6 +5,7 @@ import {
   PackageX,
   PackageOpen,
   Search,
+  SearchX,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -199,20 +200,42 @@ export function ScanLogsPage() {
             {/* Status filter tabs */}
             <div className="flex items-center gap-1">
               <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground mr-1" />
-              {(["all", "good", "damaged", "empty"] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => handleStatus(s)}
-                  className={[
-                    "h-7 px-3 text-xs font-medium border transition-colors",
-                    statusFilter === s
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-foreground",
-                  ].join(" ")}
-                >
-                  {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
+              <FilterButton
+                active={statusFilter === "all"}
+                onClick={() => handleStatus("all")}
+                icon={ScrollText}
+                label="All"
+                count={counts.total}
+                activeClass="bg-primary text-primary-foreground border-primary"
+                inactiveClass="text-muted-foreground border-border hover:bg-accent hover:text-foreground"
+              />
+              <FilterButton
+                active={statusFilter === "good"}
+                onClick={() => handleStatus("good")}
+                icon={Package}
+                label="Good"
+                count={counts.good}
+                activeClass="bg-success/15 text-success border-success/40"
+                inactiveClass="text-muted-foreground border-border hover:bg-success/10 hover:text-success hover:border-success/30"
+              />
+              <FilterButton
+                active={statusFilter === "damaged"}
+                onClick={() => handleStatus("damaged")}
+                icon={PackageX}
+                label="Damaged"
+                count={counts.damaged}
+                activeClass="bg-destructive/15 text-destructive border-destructive/40"
+                inactiveClass="text-muted-foreground border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+              />
+              <FilterButton
+                active={statusFilter === "empty"}
+                onClick={() => handleStatus("empty")}
+                icon={PackageOpen}
+                label="Empty"
+                count={counts.empty}
+                activeClass="bg-muted text-muted-foreground border-border"
+                inactiveClass="text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+              />
             </div>
 
             {/* Clear filters */}
@@ -271,8 +294,12 @@ export function ScanLogsPage() {
             <TableBody>
               {pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-sm text-muted-foreground">
-                    No records match the current filters.
+                  <TableCell colSpan={7} className="py-12">
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <SearchX className="w-8 h-8 opacity-40" strokeWidth={1.5} />
+                      <p className="text-sm font-medium">No records found</p>
+                      <p className="text-xs opacity-70">No scan logs match the current filters.</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -421,6 +448,39 @@ export function ScanLogsPage() {
       </div>
 
     </div>
+  )
+}
+
+// ─── Filter Button ─────────────────────────────────────────────────────────────
+
+function FilterButton({
+  active, onClick, icon: Icon, label, count, activeClass, inactiveClass,
+}: {
+  active:       boolean
+  onClick:      () => void
+  icon:         React.ElementType
+  label:        string
+  count:        number
+  activeClass:  string
+  inactiveClass: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium border transition-colors",
+        active ? activeClass : `bg-background ${inactiveClass}`,
+      ].join(" ")}
+    >
+      <Icon className="w-3 h-3 shrink-0" />
+      {label}
+      <span className={[
+        "text-2xs font-semibold tabular-nums px-1 py-px",
+        active ? "bg-white/20" : "bg-muted",
+      ].join(" ")}>
+        {count}
+      </span>
+    </button>
   )
 }
 
