@@ -178,14 +178,20 @@ export function LiveScannerPage() {
 
       setRecentScans(prev => [newScan, ...prev].slice(0, 10));
 
-      // Persist to backend — fire-and-forget (UI stays responsive)
+      // Persist to backend — fire-and-forget (UI stays responsive).
+      // frame_data_url is intentionally omitted: storing a raw base64 JPEG
+      // (~100–200 KB) as an Appwrite document string attribute exceeds
+      // per-attribute size limits and silently fails the entire document write.
       api.post<unknown>("/api/v1/scanner/scan", {
         status:        result.status,
         confidence:    result.confidence / 100,   // backend expects 0–1
         scan_time_ms:  scan_ms,
-        frame_data_url: frameDataUrl,
+        frame_data_url: null,
         metadata: { reason: result.reason, issues: result.issues },
-      }).catch(err => console.error("Scan persist failed:", err));
+      }).catch(err => {
+        console.error("Scan persist failed:", err);
+        setRateLimitMsg("⚠ Scan recorded locally but failed to save to database. Check console for details.");
+      });
 
       // Auto-pause if damaged and setting is enabled
       if (autoPauseOnDefect && result.status === "damaged") {

@@ -36,13 +36,17 @@ export class ScannerService {
 
     const pkg = (await this.packageRepo.create(pkgPayload, packageId)) as unknown as Package;
 
-    // 2. Create immutable scan log (append-only audit trail)
+    // 2. Create immutable scan log (append-only audit trail).
+    // frame_data_url is intentionally excluded: raw base64 frames can be
+    // 100–200 KB as text and will silently exceed Appwrite's per-attribute
+    // string size limit, causing the entire document write to fail.
+    // Frames should be stored in Appwrite Storage (files) separately if needed.
     const scanLogPayload = {
       package_id: packageId,
       status: input.status,
       confidence: input.confidence,
       scan_time_ms: input.scan_time_ms,
-      frame_data_url: input.frame_data_url ?? null,
+      frame_data_url: null,
       metadata: input.metadata ?? null,
     };
 
