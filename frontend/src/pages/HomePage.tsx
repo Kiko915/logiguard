@@ -316,68 +316,66 @@ export function HomePage() {
             <CardDescription>Packages inspected per hour · Current shift</CardDescription>
           </CardHeader>
           <CardContent className="p-4">
-            <div className="flex gap-4 items-stretch">
-              {/* Chart */}
-              <div className="flex-1 min-w-0">
-              <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={HOURLY_DATA} margin={{ top: 4, right: 0, left: -28, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="grad-good" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="10%" stopColor={C.good}    stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={C.good}    stopOpacity={0.03} />
-                  </linearGradient>
-                  <linearGradient id="grad-damaged" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="10%" stopColor={C.damaged} stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={C.damaged} stopOpacity={0.03} />
-                  </linearGradient>
-                  <linearGradient id="grad-empty" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="10%" stopColor={C.empty}   stopOpacity={0.30} />
-                    <stop offset="95%" stopColor={C.empty}   stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
-
-                <CartesianGrid strokeDasharray="2 4" stroke={C.grid} vertical={false} />
-                <XAxis
-                  dataKey="hour"
-                  tick={{ fontSize: 10, fill: C.text }}
-                  axisLine={false} tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: C.text }}
-                  axisLine={false} tickLine={false}
-                  allowDecimals={false}
-                />
-                <Tooltip content={<AreaTooltip />} cursor={{ stroke: C.grid, strokeWidth: 1 }} />
-
-                {/* Stacked: empty first (bottom), then damaged, then good (top) */}
-                <Area
-                  type="monotone" dataKey="empty"   stackId="s"
-                  stroke={C.empty}   fill="url(#grad-empty)"
-                  strokeWidth={1.5} dot={false}
-                />
-                <Area
-                  type="monotone" dataKey="damaged" stackId="s"
-                  stroke={C.damaged} fill="url(#grad-damaged)"
-                  strokeWidth={1.5} dot={false}
-                />
-                <Area
-                  type="monotone" dataKey="good"    stackId="s"
-                  stroke={C.good}    fill="url(#grad-good)"
-                  strokeWidth={1.5}
-                  dot={{ r: 2, fill: C.good, strokeWidth: 0 }}
-                  activeDot={{ r: 3, fill: C.good, strokeWidth: 0 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {total === 0 ? (
+              /* ── Empty state ─────────────────────────────────────────────────── */
+              <div className="flex flex-col items-center justify-center h-[180px] gap-2 text-muted-foreground">
+                <Activity className="w-8 h-8 opacity-25" strokeWidth={1.5} />
+                <p className="text-sm font-medium opacity-60">No scan data yet</p>
+                <p className="text-xs opacity-40 text-center max-w-[220px]">
+                  Run the Live Scanner to populate this chart with real throughput data.
+                </p>
               </div>
+            ) : (
+              <div className="flex gap-4 items-stretch">
+                {/* Chart */}
+                <div className="flex-1 min-w-0">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={HOURLY_DATA} margin={{ top: 4, right: 0, left: -28, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="grad-good" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor={C.good}    stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={C.good}    stopOpacity={0.03} />
+                        </linearGradient>
+                        <linearGradient id="grad-damaged" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor={C.damaged} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={C.damaged} stopOpacity={0.03} />
+                        </linearGradient>
+                        <linearGradient id="grad-empty" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="10%" stopColor={C.empty}   stopOpacity={0.30} />
+                          <stop offset="95%" stopColor={C.empty}   stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
 
-              {/* Right-side legend */}
-              <div className="flex flex-col justify-center gap-3.5 shrink-0 border-l border-border pl-4 pr-1 py-2">
-                <LegendItem color={C.good}    label="Good"    count="1,183" />
-                <LegendItem color={C.damaged} label="Damaged" count="47"    />
-                <LegendItem color={C.empty}   label="Empty"   count="17"    />
+                      <CartesianGrid strokeDasharray="2 4" stroke={C.grid} vertical={false} />
+                      <XAxis
+                        dataKey="hour"
+                        tick={{ fontSize: 10, fill: C.text }}
+                        axisLine={false} tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: C.text }}
+                        axisLine={false} tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip content={<AreaTooltip />} cursor={{ stroke: C.grid, strokeWidth: 1 }} />
+                      <Area type="monotone" dataKey="empty"   stackId="s" stroke={C.empty}   fill="url(#grad-empty)"   strokeWidth={1.5} dot={false} />
+                      <Area type="monotone" dataKey="damaged" stackId="s" stroke={C.damaged} fill="url(#grad-damaged)" strokeWidth={1.5} dot={false} />
+                      <Area type="monotone" dataKey="good"    stackId="s" stroke={C.good}    fill="url(#grad-good)"    strokeWidth={1.5}
+                        dot={{ r: 2, fill: C.good, strokeWidth: 0 }}
+                        activeDot={{ r: 3, fill: C.good, strokeWidth: 0 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Right-side legend — use live counts */}
+                <div className="flex flex-col justify-center gap-3.5 shrink-0 border-l border-border pl-4 pr-1 py-2">
+                  <LegendItem color={C.good}    label="Good"    count={statusDist[0].value.toLocaleString()} />
+                  <LegendItem color={C.damaged} label="Damaged" count={statusDist[1].value.toLocaleString()} />
+                  <LegendItem color={C.empty}   label="Empty"   count={statusDist[2].value.toLocaleString()} />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -391,45 +389,73 @@ export function HomePage() {
             <CardDescription>Today's scan outcomes</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={136}>
-              <PieChart>
-                <Pie
-                  data={statusDist}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={42}
-                  outerRadius={62}
-                  paddingAngle={2}
-                  dataKey="value"
-                  startAngle={90}
-                  endAngle={-270}
-                  strokeWidth={0}
-                >
-                  {statusDist.map((_, i) => (
-                    <Cell key={i} fill={DONUT_COLORS[i]} />
+            {total === 0 ? (
+              /* ── Empty state ─────────────────────────────────────────────────── */
+              <div className="flex flex-col items-center justify-center gap-2 py-4 text-muted-foreground">
+                {/* Placeholder ring */}
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" strokeWidth="10" strokeOpacity="0.12" strokeDasharray="4 3" />
+                </svg>
+                <p className="text-xs opacity-50 text-center">No scans recorded yet</p>
+                {/* Legend rows with dash placeholders */}
+                <div className="flex flex-col gap-1.5 mt-1 w-full">
+                  {statusDist.map((d, i) => (
+                    <div key={d.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ width: 8, height: 8, background: DONUT_COLORS[i], display: "inline-block", flexShrink: 0, opacity: 0.3 }} />
+                        <span className="text-xs text-muted-foreground/50">{d.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium tabular-nums text-muted-foreground/40">0</span>
+                        <span className="text-2xs text-muted-foreground/40 tabular-nums w-10 text-right">—</span>
+                      </div>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip content={<PieTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-
-            {/* Legend rows */}
-            <div className="flex flex-col gap-1.5 mt-2">
-              {statusDist.map((d, i) => (
-                <div key={d.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span style={{ width: 8, height: 8, background: DONUT_COLORS[i], display: "inline-block", flexShrink: 0 }} />
-                    <span className="text-xs text-muted-foreground">{d.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium tabular-nums">{d.value.toLocaleString()}</span>
-                    <span className="text-2xs text-muted-foreground tabular-nums w-10 text-right">
-                      {((d.value / total) * 100).toFixed(1)}%
-                    </span>
-                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={136}>
+                  <PieChart>
+                    <Pie
+                      data={statusDist}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={42}
+                      outerRadius={62}
+                      paddingAngle={2}
+                      dataKey="value"
+                      startAngle={90}
+                      endAngle={-270}
+                      strokeWidth={0}
+                    >
+                      {statusDist.map((_, i) => (
+                        <Cell key={i} fill={DONUT_COLORS[i]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Legend rows */}
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {statusDist.map((d, i) => (
+                    <div key={d.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ width: 8, height: 8, background: DONUT_COLORS[i], display: "inline-block", flexShrink: 0 }} />
+                        <span className="text-xs text-muted-foreground">{d.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium tabular-nums">{d.value.toLocaleString()}</span>
+                        <span className="text-2xs text-muted-foreground tabular-nums w-10 text-right">
+                          {total > 0 ? `${((d.value / total) * 100).toFixed(1)}%` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
