@@ -3,9 +3,10 @@ import { ScannerService } from "../services/scanner.service.js";
 import { ScanLogRepository } from "../repositories/scan-log.repository.js";
 import { PackageRepository } from "../repositories/package.repository.js";
 import { BlockchainService } from "../services/blockchain.service.js";
-import { submitScanSchema, getScanLogsQuerySchema } from "../validators/scanner.validator.js";
+import { submitScanSchema, getScanLogsQuerySchema, analyzeFrameSchema } from "../validators/scanner.validator.js";
 import { validateBody, validateQuery } from "../middleware/validate.middleware.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
+import { VisionService } from "../services/vision.service.js";
 import type { ApiSuccess } from "../types/index.js";
 
 const router = new Hono();
@@ -18,6 +19,20 @@ const scannerService = new ScannerService(
   new PackageRepository(),
   blockchainService
 );
+const visionService = new VisionService();
+
+// ─── POST /scanner/analyze ────────────────────────────────────────────────────
+// Sends a captured frame to Gemini Vision and returns the classification.
+// Does NOT persist to DB — that happens via /scan after the UI confirms.
+router.post("/analyze", authMiddleware, async (c) => {
+  const validated = await validateBody(c, analyzeFrameSchema);
+  if (validated instanceof Response) return validated;
+
+  const result = await visionService.analyzeFrame(validated.data.frame_data_url);
+
+  const body: ApiSuccess<typeof result> = { success: true, data: result };
+  return c.json(body);
+});
 
 // ─── POST /scanner/scan ────────────────────────────────────────────────────────
 // Receives a scan result from the TF.js frontend (FR-01, FR-02, FR-03)

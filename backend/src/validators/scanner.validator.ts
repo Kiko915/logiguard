@@ -25,3 +25,11 @@ export const getScanLogsQuerySchema = z.object({
 
 export type SubmitScanInput = z.infer<typeof submitScanSchema>;
 export type GetScanLogsQuery = z.infer<typeof getScanLogsQuerySchema>;
+
+// ─── POST /scanner/analyze ─────────────────────────────────────────────────────
+export const analyzeFrameSchema = z.object({
+  frame_data_url: z.string().startsWith("data:image/"),
+  barcode:        z.string().max(128).nullable().optional(),
+});
+
+export type AnalyzeFrameInput = z.infer<typeof analyzeFrameSchema>;

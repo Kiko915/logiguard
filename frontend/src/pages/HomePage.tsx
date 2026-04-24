@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
+import { api } from "@/lib/api"
 import {
   ScanLine,
   Package,
@@ -55,40 +56,56 @@ const C = {
   warn:    "#c9973a",   // warning amber
 }
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
+// ─── API Types ────────────────────────────────────────────────────────────────
 
-const STATS = [
+interface LiveStats {
+  good:    number
+  damaged: number
+  empty:   number
+}
+interface ApiScanLog {
+  id:           string
+  package_id:   string
+  status:       "good" | "damaged" | "empty"
+  confidence:   number   // 0–1
+  scan_time_ms: number
+  created_at:   string
+}
+
+// ─── Mock Data (fallback / hourly chart — backend has no time-bucket endpoint yet) ──
+
+const STATS_FALLBACK = [
   {
     label: "Total Scans Today",
-    value: "1,247",
-    delta: "+12.4%",
+    value: "—",
+    delta: "loading",
     up:    true,
     icon:  Boxes,
-    sub:   "vs. yesterday",
+    sub:   "all time",
   },
   {
     label: "Good Packages",
-    value: "1,183",
-    delta: "94.9%",
+    value: "—",
+    delta: "loading",
     up:    true,
     icon:  Package,
     sub:   "pass rate",
   },
   {
     label: "Damaged Flagged",
-    value: "47",
-    delta: "+3",
+    value: "—",
+    delta: "loading",
     up:    false,
     icon:  PackageX,
-    sub:   "since last hour",
+    sub:   "flagged",
   },
   {
     label: "Avg Scan Time",
-    value: "2.84s",
-    delta: "-0.12s",
+    value: "—",
+    delta: "loading",
     up:    true,
     icon:  Clock,
-    sub:   "µ = 1,268/hr",
+    sub:   "µ = …/hr",
   },
 ]
 
@@ -104,10 +121,10 @@ const HOURLY_DATA = [
   { hour: "14:30", good: 64,  damaged: 3, empty: 1 },
 ]
 
-const STATUS_DIST = [
-  { name: "Good",    value: 1183 },
-  { name: "Damaged", value: 47   },
-  { name: "Empty",   value: 17   },
+const STATUS_DIST_FALLBACK = [
+  { name: "Good",    value: 0 },
+  { name: "Damaged", value: 0 },
+  { name: "Empty",   value: 0 },
 ]
 
 const DONUT_COLORS = [C.good, C.damaged, C.empty]
@@ -163,9 +180,9 @@ function PieTooltip({ active, payload }: {
   payload?: { name: string; value: number; payload: { name: string; value: number } }[]
 }) {
   if (!active || !payload?.length) return null
-  const p    = payload[0]
-  const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
-  const pct  = ((p.value / total) * 100).toFixed(1)
+  const p   = payload[0]
+  const sum = payload.reduce((s, x) => s + x.value, p.value)  // approximate from segment
+  const pct = sum > 0 ? ((p.value / sum) * 100).toFixed(1) : "—"
   return (
     <div className="bg-card border border-border px-3 py-2 text-xs shadow-md">
       <p className="font-semibold text-foreground">{p.name}</p>
@@ -194,18 +211,68 @@ let dashboardLoaded = false
 
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 export function HomePage() {
-  const total = STATUS_DIST.reduce((s, d) => s + d.value, 0)
-
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(!dashboardLoaded)
+  const [loading,    setLoading]    = useState(!dashboardLoaded)
+  const [liveStats,  setLiveStats]  = useState<LiveStats | null>(null)
+  const [recentLogs, setRecentLogs] = useState<ApiScanLog[]>([])
+  const [derivedMu,  setDerivedMu]  = useState<number | null>(null)
+
+  // Initial skeleton delay (first visit only)
   useEffect(() => {
     if (dashboardLoaded) return
-    const t = setTimeout(() => {
-      dashboardLoaded = true
-      setLoading(false)
-    }, 1400)
+    const t = setTimeout(() => { dashboardLoaded = true; setLoading(false) }, 1400)
     return () => clearTimeout(t)
   }, [])
+
+  // Fetch live stats + recent logs from backend
+  useEffect(() => {
+    interface ApiStats {
+      total_scans:      number
+      good_count:       number
+      damaged_count:    number
+      empty_count:      number
+      avg_scan_time_ms: number | null
+    }
+    interface StatsResponse { data: { stats: ApiStats; derived_service_rate: number | null } }
+    interface LogsResponse  { data: ApiScanLog[] }
+
+    Promise.all([
+      api.get<StatsResponse>("/api/v1/scanner/stats"),
+      api.get<LogsResponse>("/api/v1/scanner/logs?per_page=8"),
+    ])
+      .then(([statsRes, logsRes]) => {
+        const s = statsRes.data.stats
+        setLiveStats({ good: s.good_count, damaged: s.damaged_count, empty: s.empty_count })
+        setDerivedMu(statsRes.data.derived_service_rate)
+        setRecentLogs(logsRes.data)
+      })
+      .catch(err => console.error("Dashboard fetch failed:", err))
+  }, [])
+
+  // Derive display values from live data
+  const statusDist = useMemo(() => liveStats
+    ? [
+        { name: "Good",    value: liveStats.good    },
+        { name: "Damaged", value: liveStats.damaged  },
+        { name: "Empty",   value: liveStats.empty    },
+      ]
+    : STATUS_DIST_FALLBACK,
+  [liveStats])
+
+  const total = statusDist.reduce((s, d) => s + d.value, 0)
+
+  const liveKpiStats = useMemo(() => {
+    if (!liveStats) return STATS_FALLBACK
+    const passRate    = total > 0 ? ((liveStats.good / total) * 100).toFixed(1) : "—"
+    const muLabel     = derivedMu ? `µ = ${Math.round(derivedMu)}/hr` : "µ = —"
+    const avgSec      = derivedMu ? (3600 / derivedMu).toFixed(2) + "s" : "—"
+    return [
+      { label: "Total Scans",     value: total.toLocaleString(),              delta: "all time",     up: true,  icon: Boxes,   sub: "since first scan" },
+      { label: "Good Packages",   value: liveStats.good.toLocaleString(),     delta: `${passRate}%`, up: true,  icon: Package, sub: "pass rate" },
+      { label: "Damaged Flagged", value: liveStats.damaged.toLocaleString(),  delta: "flagged",      up: false, icon: PackageX,sub: "inspection failures" },
+      { label: "Avg Scan Time",   value: avgSec,                              delta: muLabel,        up: true,  icon: Clock,   sub: "derived from logs" },
+    ]
+  }, [liveStats, total, derivedMu])
 
   if (loading) return <DashboardSkeleton />
 
@@ -231,7 +298,7 @@ export function HomePage() {
 
       {/* ── KPI Stats Row ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {STATS.map((stat) => (
+        {liveKpiStats.map((stat) => (
           <StatCard key={stat.label} {...stat} />
         ))}
       </div>
@@ -327,7 +394,7 @@ export function HomePage() {
             <ResponsiveContainer width="100%" height={136}>
               <PieChart>
                 <Pie
-                  data={STATUS_DIST}
+                  data={statusDist}
                   cx="50%"
                   cy="50%"
                   innerRadius={42}
@@ -338,7 +405,7 @@ export function HomePage() {
                   endAngle={-270}
                   strokeWidth={0}
                 >
-                  {STATUS_DIST.map((_, i) => (
+                  {statusDist.map((_, i) => (
                     <Cell key={i} fill={DONUT_COLORS[i]} />
                   ))}
                 </Pie>
@@ -348,7 +415,7 @@ export function HomePage() {
 
             {/* Legend rows */}
             <div className="flex flex-col gap-1.5 mt-2">
-              {STATUS_DIST.map((d, i) => (
+              {statusDist.map((d, i) => (
                 <div key={d.name} className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span style={{ width: 8, height: 8, background: DONUT_COLORS[i], display: "inline-block", flexShrink: 0 }} />
@@ -475,51 +542,50 @@ export function HomePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {SCAN_LOGS.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell>
-                    <span className="mono-value text-muted-foreground">{log.id}…</span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        log.status === "good"    ? "good"    :
-                        log.status === "damaged" ? "damaged" : "empty"
-                      }
-                    >
-                      {log.status === "good"    && <Package     className="w-2.5 h-2.5" />}
-                      {log.status === "damaged" && <PackageX    className="w-2.5 h-2.5" />}
-                      {log.status === "empty"   && <PackageOpen className="w-2.5 h-2.5" />}
-                      {log.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className={
-                      log.confidence >= 95 ? "text-success font-medium" :
-                      log.confidence >= 85 ? "text-warning font-medium" :
-                      "text-destructive font-medium"
-                    }>
-                      {log.confidence.toFixed(1)}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(log.scan_ms / 1000).toFixed(2)}s
-                  </TableCell>
-                  <TableCell>
-                    {log.tx === "—" ? (
-                      <span className="text-muted-foreground text-xs">Not logged</span>
-                    ) : (
-                      <span className="mono-value flex items-center gap-1 text-muted-foreground">
-                        <Link className="w-2.5 h-2.5 shrink-0" />
-                        {log.tx}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {log.time}
+              {recentLogs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
+                    No scans yet — run the Live Scanner to populate this table.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : recentLogs.map((log) => {
+                const confPct  = (log.confidence * 100)
+                const timeStr  = new Date(log.created_at).toLocaleTimeString("en-PH", { hour12: false })
+                const shortId  = log.package_id.slice(0, 13) + "…"
+                return (
+                  <TableRow key={log.id}>
+                    <TableCell>
+                      <span className="mono-value text-muted-foreground">{shortId}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={log.status}>
+                        {log.status === "good"    && <Package     className="w-2.5 h-2.5" />}
+                        {log.status === "damaged" && <PackageX    className="w-2.5 h-2.5" />}
+                        {log.status === "empty"   && <PackageOpen className="w-2.5 h-2.5" />}
+                        {log.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={
+                        confPct >= 95 ? "text-success font-medium tabular-nums" :
+                        confPct >= 85 ? "text-warning font-medium tabular-nums" :
+                                        "text-destructive font-medium tabular-nums"
+                      }>
+                        {confPct.toFixed(1)}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                      {(log.scan_time_ms / 1000).toFixed(2)}s
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-muted-foreground/60 italic">Via blockchain</span>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                      {timeStr}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -527,7 +593,7 @@ export function HomePage() {
 
       {/* ── System Info Row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2">
-        <InfoTile icon={Cpu}      label="AI Engine"  value="TensorFlow.js"   sub="MobileNet v2 — in-browser"      />
+        <InfoTile icon={Cpu}      label="AI Engine"  value="Gemini 2.0 Flash"  sub="Zero-shot vision · via backend"   />
         <InfoTile icon={Link}     label="Blockchain" value="Ganache Testnet"  sub="Chain ID 1337 · Port 8545"      />
         <InfoTile icon={Database} label="Database"   value="Appwrite"         sub="Documents DB · Collections ×3"  />
       </div>
@@ -536,7 +602,7 @@ export function HomePage() {
 }
 
 // ─── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, delta, up, icon: Icon, sub }: typeof STATS[number]) {
+function StatCard({ label, value, delta, up, icon: Icon, sub }: typeof STATS_FALLBACK[number]) {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between gap-2">

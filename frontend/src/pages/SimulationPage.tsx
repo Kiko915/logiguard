@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react"
+import { api } from "@/lib/api"
 import {
   Activity,
   Play,
@@ -265,6 +266,57 @@ function runMonteCarlo(p: SimParams): MCResult {
   }
 }
 
+// ─── Backend simulation result shape ──────────────────────────────────────────
+
+interface BackendSimResult {
+  monte_carlo: {
+    replications:              number
+    overflow_probability:      number
+    avg_queue_length:          number
+    avg_waiting_time_s:        number
+    avg_utilization:           number
+    avg_throughput:            number
+    avg_false_positive_impact: number
+    service_time_histogram:    number[]               // counts only, no labels
+    queue_length_over_time:    { time_s: number; queue_length: number }[]
+  }
+}
+
+/**
+ * Maps a BackendSimResult to the MCResult shape expected by the charts.
+ * Histogram bin labels are derived from an expected service-time distribution
+ * (3 × mean service time spread across the bin count).
+ */
+function mapBackendResult(data: BackendSimResult, serviceRate: number): MCResult {
+  const mc         = data.monte_carlo
+  const avgSvcMs   = 3600_000 / serviceRate                                  // mean ms
+  const binCount   = mc.service_time_histogram.length
+  const binWidth   = (avgSvcMs * 3) / binCount                               // rough 3σ spread
+
+  const histogram: MCResult["service_time_histogram"] = mc.service_time_histogram.map((count, i) => ({
+    bin:   `${Math.round((i + 0.5) * binWidth)}ms`,
+    count,
+  }))
+
+  const raw  = mc.queue_length_over_time
+  const step = Math.max(1, Math.floor(raw.length / 80))
+  const qOverTime: MCResult["queue_over_time"] = raw
+    .filter((_, i) => i % step === 0)
+    .map(pt => ({ t: (pt.time_s / 3600).toFixed(2), q: pt.queue_length }))
+
+  return {
+    overflow_probability:    mc.overflow_probability,
+    avg_queue_length:        mc.avg_queue_length,
+    avg_waiting_time_s:      mc.avg_waiting_time_s,
+    avg_utilization:         mc.avg_utilization,
+    avg_throughput:          mc.avg_throughput,
+    avg_false_positive_rate: mc.avg_false_positive_impact,
+    service_time_histogram:  histogram,
+    queue_over_time:         qOverTime,
+    replications_run:        mc.replications,
+  }
+}
+
 // ─── Default parameters ────────────────────────────────────────────────────────
 
 const DEFAULTS = {
@@ -325,21 +377,27 @@ export function SimulationPage() {
     if (!isNaN(v) && v > 0) setForm(f => ({ ...f, [key]: v }))
   }, [])
 
-  const handleRun = useCallback(() => {
+  const handleRun = useCallback(async () => {
     setIsRunning(true)
-    setTimeout(() => {
-      const mc = runMonteCarlo({
-        arrival_rate:             form.arrival_rate,
-        service_rate:             form.service_rate,
-        defect_rate:              form.defect_rate / 100,
-        shift_hours:              form.shift_hours,
-        replications:             Math.min(form.replications, 300),
-        queue_overflow_threshold: form.queue_overflow_threshold,
-      })
-      setResults(mc)
+    try {
+      const res = await api.post<{ success: true; data: BackendSimResult }>(
+        "/api/v1/simulation/run",
+        {
+          arrival_rate:             form.arrival_rate,
+          service_rate:             form.service_rate,
+          defect_rate:              form.defect_rate / 100,
+          shift_hours:              form.shift_hours,
+          replications:             Math.min(form.replications, 300),
+          queue_overflow_threshold: form.queue_overflow_threshold,
+        },
+      )
+      setResults(mapBackendResult(res.data, form.service_rate))
       setRunCount(c => c + 1)
+    } catch (err) {
+      console.error("Simulation run failed:", err)
+    } finally {
       setIsRunning(false)
-    }, 40)
+    }
   }, [form])
 
   const handleReset = () => {
