@@ -207,6 +207,19 @@ export function LiveScannerPage() {
     return () => clearInterval(id);
   }, [isCameraActive, isScanning, scanIntervalS, captureAndAnalyze]);
 
+  // ── Attach stream to video element whenever isCameraActive becomes true ──────
+  // This acts as a safety net: if the stream was acquired before the video
+  // element was painted (React batching / Strict Mode double-invoke), the
+  // effect runs after the DOM update and ensures srcObject is always set.
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(() => {});
+      }
+    }
+  }, [isCameraActive]);
+
   // ── Cleanup on unmount ───────────────────────────────────────────────────────
   useEffect(() => () => { streamRef.current?.getTracks().forEach(t => t.stop()) }, []);
 
@@ -279,48 +292,54 @@ export function LiveScannerPage() {
             </CardHeader>
 
             <CardContent className="flex-1 p-0 bg-black relative flex items-center justify-center overflow-hidden">
-              {/* Hidden canvas for frame capture */}
+              {/* Hidden canvas for frame capture — always in DOM */}
               <canvas ref={canvasRef} className="hidden" />
 
-              {isCameraActive ? (
-                <>
-                  {/* Real video element */}
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
+              {/*
+                ── Video element is ALWAYS in the DOM so videoRef.current is
+                   never null when startCamera() runs and attaches srcObject.
+                   We simply hide it with CSS until the stream is active.
+              */}
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className={cn(
+                  "w-full h-full object-cover",
+                  !isCameraActive && "hidden",
+                )}
+              />
 
-                  {/* Scanning overlay */}
-                  {isScanning && (
-                    <div className="absolute inset-0 pointer-events-none border-[2px] border-success/30 m-8">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-[2px] border-l-[2px] border-success -ml-[2px] -mt-[2px]" />
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-[2px] border-r-[2px] border-success -mr-[2px] -mt-[2px]" />
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-[2px] border-l-[2px] border-success -ml-[2px] -mb-[2px]" />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-[2px] border-r-[2px] border-success -mr-[2px] -mb-[2px]" />
-                      <div className="absolute left-0 right-0 h-[1px] bg-success/50 top-1/2 -translate-y-1/2 animate-[scan_2s_ease-in-out_infinite]" />
-                    </div>
-                  )}
+              {/* ── Scanning corner brackets + sweep line (active only) ────── */}
+              {isCameraActive && isScanning && (
+                <div className="absolute inset-0 pointer-events-none border-[2px] border-success/30 m-8">
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-[2px] border-l-[2px] border-success -ml-[2px] -mt-[2px]" />
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-[2px] border-r-[2px] border-success -mr-[2px] -mt-[2px]" />
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-[2px] border-l-[2px] border-success -ml-[2px] -mb-[2px]" />
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-[2px] border-r-[2px] border-success -mr-[2px] -mb-[2px]" />
+                  <div className="absolute left-0 right-0 h-[1px] bg-success/50 top-1/2 -translate-y-1/2 animate-[scan_2s_ease-in-out_infinite]" />
+                </div>
+              )}
 
-                  {/* Last result overlay (bottom of video) */}
-                  {lastResult && isScanning && (
-                    <div className={cn(
-                      "absolute bottom-0 left-0 right-0 px-3 py-2 flex items-center gap-2",
-                      lastResult.status === "good"    && "bg-success/80",
-                      lastResult.status === "damaged" && "bg-destructive/80",
-                      lastResult.status === "empty"   && "bg-muted/80",
-                    )}>
-                      <StatusIcon status={lastResult.status} className="w-3.5 h-3.5 text-white shrink-0" />
-                      <span className="text-xs text-white font-medium capitalize">{lastResult.status}</span>
-                      <span className="text-xs text-white/80 font-mono">{lastResult.confidence}%</span>
-                      <span className="text-xs text-white/70 ml-2 truncate">{lastResult.reason}</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center text-muted-foreground flex flex-col items-center">
+              {/* ── Last result overlay — bottom strip on video ────────────── */}
+              {isCameraActive && lastResult && isScanning && (
+                <div className={cn(
+                  "absolute bottom-0 left-0 right-0 px-3 py-2 flex items-center gap-2",
+                  lastResult.status === "good"    && "bg-success/80",
+                  lastResult.status === "damaged" && "bg-destructive/80",
+                  lastResult.status === "empty"   && "bg-muted/80",
+                )}>
+                  <StatusIcon status={lastResult.status} className="w-3.5 h-3.5 text-white shrink-0" />
+                  <span className="text-xs text-white font-medium capitalize">{lastResult.status}</span>
+                  <span className="text-xs text-white/80 font-mono">{lastResult.confidence}%</span>
+                  <span className="text-xs text-white/70 ml-2 truncate">{lastResult.reason}</span>
+                </div>
+              )}
+
+              {/* ── Offline placeholder — absolute overlay when camera is off */}
+              {!isCameraActive && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
                   <VideoOff className="w-10 h-10 mb-3 opacity-20" />
                   <p className="text-sm">Camera is inactive.</p>
                   <p className="text-xs mt-1 opacity-70">
