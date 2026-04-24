@@ -19,6 +19,8 @@ import {
   Lightbulb,
   ShieldAlert,
   ListChecks,
+  Server,
+  Network,
 } from "lucide-react"
 import {
   LineChart,
@@ -40,15 +42,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-// ─── Chart color constants (matches HomePage) ──────────────────────────────────
+// ─── Chart color constants (dark-mode optimised) ───────────────────────────────
 const C = {
-  primary:  "#242424",
-  success:  "#4d8f68",
-  warn:     "#c9973a",
-  damaged:  "#b54343",
-  muted:    "#9ca3af",
-  grid:     "#e5e5e5",
-  text:     "#737373",
+  primary:  "#60a5fa",   // blue-400 — visible on dark backgrounds
+  success:  "#4ade80",   // green-400
+  warn:     "#fbbf24",   // amber-400
+  damaged:  "#f87171",   // red-400
+  muted:    "#9ca3af",   // gray-400
+  grid:     "#2d2d2d",   // subtle dark grid lines
+  text:     "#a3a3a3",   // neutral-400
 }
 
 // ─── M/M/1 Engine (frontend port of backend simulation.service.ts) ─────────────
@@ -112,6 +114,26 @@ function computeTheoretical(p: SimParams): MM1Result {
   const W  = L  / p.arrival_rate
   const Wq = Lq / p.arrival_rate
   return { rho, L, Lq, W, Wq, throughput: p.arrival_rate, is_stable: true }
+}
+
+// ─── M/M/c Theoretical (partial — Erlang C pending) ───────────────────────────
+
+interface MMCTheoretical {
+  rho_per_server: number   // λ / (c · µ)
+  rho_total:      number   // λ / µ  — traffic intensity in Erlangs
+  is_stable:      boolean  // rho_per_server < 1
+  c:              number
+}
+
+function computeMMCTheoretical(p: SimParams & { servers: number }): MMCTheoretical {
+  const c              = Math.max(1, Math.floor(p.servers))
+  const rho_per_server = p.arrival_rate / (c * p.service_rate)
+  return {
+    rho_per_server,
+    rho_total: p.arrival_rate / p.service_rate,
+    is_stable: rho_per_server < 1,
+    c,
+  }
 }
 
 function runSimReplication(p: SimParams, seed: number): {
@@ -252,6 +274,7 @@ const DEFAULTS = {
   shift_hours:              8,
   replications:             100,
   queue_overflow_threshold: 10,
+  servers:                  2,
 }
 
 // ─── Tooltip components ────────────────────────────────────────────────────────
@@ -285,8 +308,14 @@ export function SimulationPage() {
   const [showAssumptions, setShowAssumptions] = useState(false)
   const [runCount, setRunCount]   = useState(0)
   const [aiState, setAiState]     = useState<"idle" | "loading" | "ready">("idle")
+  const [modelType, setModelType] = useState<"mm1" | "mmc">("mm1")
 
   const theoretical = useMemo<MM1Result>(() => computeTheoretical({
+    ...form,
+    defect_rate: form.defect_rate / 100,
+  }), [form])
+
+  const mmcTheoretical = useMemo<MMCTheoretical>(() => computeMMCTheoretical({
     ...form,
     defect_rate: form.defect_rate / 100,
   }), [form])
@@ -332,6 +361,18 @@ export function SimulationPage() {
     ? <Badge variant="stable">Stable System</Badge>
     : <Badge variant="unstable">Unstable — ρ ≥ 1</Badge>
 
+  const mmcRhoColor =
+    mmcTheoretical.rho_per_server >= 1   ? "text-destructive" :
+    mmcTheoretical.rho_per_server >= 0.8 ? "text-warning"     : "text-success"
+
+  const mmcRhoBarColor =
+    mmcTheoretical.rho_per_server >= 1   ? "bg-destructive" :
+    mmcTheoretical.rho_per_server >= 0.8 ? "bg-warning"     : "bg-success"
+
+  const mmcStabilityBadge = mmcTheoretical.is_stable
+    ? <Badge variant="stable">Stable System</Badge>
+    : <Badge variant="unstable">Unstable — ρ ≥ 1</Badge>
+
   return (
     <div className="flex flex-col gap-4 max-w-[1400px]">
 
@@ -343,7 +384,10 @@ export function SimulationPage() {
             Queue Simulation
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            M/M/1 theoretical analysis + Monte Carlo discrete-event simulation · LCG-seeded, deterministic per replication
+            {modelType === "mm1"
+              ? "M/M/1 theoretical analysis + Monte Carlo discrete-event simulation · LCG-seeded, deterministic per replication"
+              : "M/M/c multi-server theoretical analysis · Erlang C model · discrete-event simulation coming soon"
+            }
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -351,13 +395,48 @@ export function SimulationPage() {
             <RotateCcw className="w-3.5 h-3.5" />
             Reset
           </Button>
-          <Button size="sm" onClick={handleRun} disabled={isRunning} className="gap-1.5 min-w-[120px]">
+          <Button
+            size="sm"
+            onClick={handleRun}
+            disabled={isRunning || modelType === "mmc"}
+            className="gap-1.5 min-w-[120px]"
+          >
             {isRunning
               ? <><span className="w-3 h-3 border border-primary-foreground/50 border-t-primary-foreground animate-spin shrink-0" />Running…</>
               : <><Play className="w-3.5 h-3.5" />Run Simulation</>
             }
           </Button>
         </div>
+      </div>
+
+      {/* ── Model Selector ──────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-0 border border-border w-fit">
+        <button
+          onClick={() => { setModelType("mm1"); setResults(null) }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+            modelType === "mm1"
+              ? "bg-foreground text-background"
+              : "bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          <GitBranch className="w-3 h-3" />
+          M/M/1 · Single Server
+        </button>
+        <div className="w-px self-stretch bg-border" />
+        <button
+          onClick={() => { setModelType("mmc"); setResults(null) }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+            modelType === "mmc"
+              ? "bg-foreground text-background"
+              : "bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          <Network className="w-3 h-3" />
+          M/M/c · Multi-Server
+          {modelType !== "mmc" && (
+            <Badge variant="warning" className="text-2xs ml-0.5">Preview</Badge>
+          )}
+        </button>
       </div>
 
       {/* ── Row 1: Parameters + Theoretical ────────────────────────────────── */}
@@ -370,7 +449,12 @@ export function SimulationPage() {
               <Cpu className="w-3.5 h-3.5" />
               Parameters
             </CardTitle>
-            <CardDescription>Configure the M/M/1 queue model</CardDescription>
+            <CardDescription>
+              {modelType === "mm1"
+                ? "Configure the M/M/1 queue model"
+                : "Configure the M/M/c multi-server queue model"
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
 
@@ -390,8 +474,22 @@ export function SimulationPage() {
               value={form.service_rate}
               min={1}
               onChange={v => setField("service_rate", v)}
-              hint="Scanner throughput capacity per hour"
+              hint={modelType === "mmc" ? "Throughput per server per hour" : "Scanner throughput capacity per hour"}
             />
+
+            {modelType === "mmc" && (
+              <ParamField
+                id="servers"
+                label="Number of Servers (c)"
+                unit="servers"
+                value={form.servers}
+                min={2}
+                max={50}
+                step={1}
+                onChange={v => setField("servers", v)}
+                hint="Parallel scanner stations handling the shared queue"
+              />
+            )}
             <ParamField
               id="defect"
               label="Defect Rate"
@@ -437,129 +535,295 @@ export function SimulationPage() {
               hint="Queue length that triggers overflow flag"
             />
 
-            <Button className="w-full mt-1 gap-1.5" onClick={handleRun} disabled={isRunning}>
+            <Button
+              className="w-full mt-1 gap-1.5"
+              onClick={handleRun}
+              disabled={isRunning || modelType === "mmc"}
+            >
               {isRunning
                 ? <><span className="w-3 h-3 border border-primary-foreground/50 border-t-primary-foreground animate-spin" />Running…</>
-                : <><Play className="w-3.5 h-3.5" />Run Simulation</>
+                : modelType === "mmc"
+                  ? <><Server className="w-3.5 h-3.5" />Simulation Coming Soon</>
+                  : <><Play className="w-3.5 h-3.5" />Run Simulation</>
               }
             </Button>
           </CardContent>
         </Card>
 
-        {/* Theoretical M/M/1 */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between w-full">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <GitBranch className="w-3.5 h-3.5" />
-                  Theoretical M/M/1 Metrics
-                </CardTitle>
-                <CardDescription>Closed-form results — updates live as parameters change</CardDescription>
+        {/* Theoretical Panel — M/M/1 */}
+        {modelType === "mm1" && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between w-full">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <GitBranch className="w-3.5 h-3.5" />
+                    Theoretical M/M/1 Metrics
+                  </CardTitle>
+                  <CardDescription>Closed-form results — updates live as parameters change</CardDescription>
+                </div>
+                {stabilityBadge}
               </div>
-              {stabilityBadge}
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
 
-            {/* Utilization ρ — hero metric */}
-            <div className="border border-border p-3 bg-muted/20">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Server Utilization (ρ = λ/µ)
-                </span>
-                <span className={`text-lg font-semibold tabular-nums font-mono ${rhoColor}`}>
-                  {(theoretical.rho * 100).toFixed(1)}%
-                </span>
+              {/* Utilization ρ — hero metric */}
+              <div className="border border-border p-3 bg-muted/20">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Server Utilization (ρ = λ/µ)
+                  </span>
+                  <span className={`text-lg font-semibold tabular-nums font-mono ${rhoColor}`}>
+                    {(theoretical.rho * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-muted">
+                  <div
+                    className={`h-full transition-all duration-300 ${rhoBarColor}`}
+                    style={{ width: `${Math.min(theoretical.rho * 100, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-2xs text-muted-foreground">0%</span>
+                  <span className="text-2xs text-warning">Warn 80%</span>
+                  <span className="text-2xs text-muted-foreground">100%</span>
+                </div>
               </div>
-              <div className="w-full h-1.5 bg-muted">
-                <div
-                  className={`h-full transition-all duration-300 ${rhoBarColor}`}
-                  style={{ width: `${Math.min(theoretical.rho * 100, 100)}%` }}
+
+              {/* Metrics grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <MetricTile
+                  label="Avg Items in System (L)"
+                  value={theoretical.is_stable ? theoretical.L.toFixed(3) : "∞"}
+                  unit="packages"
+                  color={theoretical.L > 5 ? "warn" : undefined}
+                />
+                <MetricTile
+                  label="Avg Items in Queue (Lq)"
+                  value={theoretical.is_stable ? theoretical.Lq.toFixed(3) : "∞"}
+                  unit="packages"
+                  color={theoretical.Lq > 3 ? "warn" : undefined}
+                />
+                <MetricTile
+                  label="Throughput"
+                  value={theoretical.is_stable ? theoretical.throughput.toFixed(0) : "—"}
+                  unit="pkg/hr"
+                />
+                <MetricTile
+                  label="Avg Time in System (W)"
+                  value={theoretical.is_stable ? (theoretical.W * 3600).toFixed(2) : "∞"}
+                  unit="seconds"
+                  color={theoretical.W * 3600 > 30 ? "warn" : undefined}
+                />
+                <MetricTile
+                  label="Avg Wait in Queue (Wq)"
+                  value={theoretical.is_stable ? (theoretical.Wq * 3600).toFixed(2) : "∞"}
+                  unit="seconds"
+                  color={theoretical.Wq * 3600 > 20 ? "warn" : undefined}
+                />
+                <MetricTile
+                  label="P(idle)"
+                  value={theoretical.is_stable ? ((1 - theoretical.rho) * 100).toFixed(1) + "%" : "0%"}
+                  unit="server idle prob."
                 />
               </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-2xs text-muted-foreground">0%</span>
-                <span className="text-2xs text-warning">Warn 80%</span>
-                <span className="text-2xs text-muted-foreground">100%</span>
+
+              {/* Unstable warning */}
+              {!theoretical.is_stable && (
+                <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3">
+                  <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive">
+                    System is <strong>unstable</strong> — arrival rate exceeds service capacity (ρ ≥ 1).
+                    The queue will grow without bound. Increase µ or decrease λ to stabilize.
+                  </p>
+                </div>
+              )}
+
+              {/* Formula reference */}
+              <div className="border border-border bg-muted/30 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">M/M/1 Formulas</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {[
+                    ["ρ = λ / µ", "Utilization"],
+                    ["L = ρ / (1−ρ)", "Avg in system"],
+                    ["Lq = ρ² / (1−ρ)", "Avg in queue"],
+                    ["W = L / λ", "Avg system time"],
+                    ["Wq = Lq / λ", "Avg wait time"],
+                    ["P₀ = 1 − ρ", "Idle probability"],
+                  ].map(([f, d]) => (
+                    <div key={f} className="flex items-baseline gap-1.5">
+                      <span className="font-mono text-2xs text-foreground">{f}</span>
+                      <span className="text-2xs text-muted-foreground">— {d}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {/* Metrics grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <MetricTile
-                label="Avg Items in System (L)"
-                value={theoretical.is_stable ? theoretical.L.toFixed(3) : "∞"}
-                unit="packages"
-                color={theoretical.L > 5 ? "warn" : undefined}
-              />
-              <MetricTile
-                label="Avg Items in Queue (Lq)"
-                value={theoretical.is_stable ? theoretical.Lq.toFixed(3) : "∞"}
-                unit="packages"
-                color={theoretical.Lq > 3 ? "warn" : undefined}
-              />
-              <MetricTile
-                label="Throughput"
-                value={theoretical.is_stable ? theoretical.throughput.toFixed(0) : "—"}
-                unit="pkg/hr"
-              />
-              <MetricTile
-                label="Avg Time in System (W)"
-                value={theoretical.is_stable ? (theoretical.W * 3600).toFixed(2) : "∞"}
-                unit="seconds"
-                color={theoretical.W * 3600 > 30 ? "warn" : undefined}
-              />
-              <MetricTile
-                label="Avg Wait in Queue (Wq)"
-                value={theoretical.is_stable ? (theoretical.Wq * 3600).toFixed(2) : "∞"}
-                unit="seconds"
-                color={theoretical.Wq * 3600 > 20 ? "warn" : undefined}
-              />
-              <MetricTile
-                label="P(idle)"
-                value={theoretical.is_stable ? ((1 - theoretical.rho) * 100).toFixed(1) + "%" : "0%"}
-                unit="server idle prob."
-              />
-            </div>
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Unstable warning */}
-            {!theoretical.is_stable && (
-              <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3">
-                <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive">
-                  System is <strong>unstable</strong> — arrival rate exceeds service capacity (ρ ≥ 1).
-                  The queue will grow without bound. Increase µ or decrease λ to stabilize.
+        {/* Theoretical Panel — M/M/c */}
+        {modelType === "mmc" && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between w-full">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Server className="w-3.5 h-3.5" />
+                    Theoretical M/M/c Metrics
+                  </CardTitle>
+                  <CardDescription>
+                    Multi-server Erlang C model · c = {mmcTheoretical.c} servers · updates live
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {mmcStabilityBadge}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+
+              {/* Per-server utilization ρ — hero metric */}
+              <div className="border border-border p-3 bg-muted/20">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Per-Server Utilization (ρ = λ / c·µ)
+                  </span>
+                  <span className={`text-lg font-semibold tabular-nums font-mono ${mmcRhoColor}`}>
+                    {(mmcTheoretical.rho_per_server * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-muted">
+                  <div
+                    className={`h-full transition-all duration-300 ${mmcRhoBarColor}`}
+                    style={{ width: `${Math.min(mmcTheoretical.rho_per_server * 100, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-2xs text-muted-foreground">0%</span>
+                  <span className="text-2xs text-warning">Warn 80%</span>
+                  <span className="text-2xs text-muted-foreground">100%</span>
+                </div>
+              </div>
+
+              {/* Metrics grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <MetricTile
+                  label="Traffic Intensity (a = λ/µ)"
+                  value={mmcTheoretical.rho_total.toFixed(3)}
+                  unit="Erlangs"
+                  color={mmcTheoretical.rho_total >= mmcTheoretical.c ? "destructive" : undefined}
+                />
+                <MetricTile
+                  label="Active Servers (c)"
+                  value={mmcTheoretical.c.toString()}
+                  unit="parallel stations"
+                />
+                <MetricTile
+                  label="System Capacity (c·µ)"
+                  value={(mmcTheoretical.c * form.service_rate).toLocaleString()}
+                  unit="pkg/hr total"
+                />
+                {/* Erlang C derived — pending */}
+                <MetricTile label="P(wait) — Erlang C" value="—" unit="pending" />
+                <MetricTile label="Avg Queue Length (Lq)" value="—" unit="pending" />
+                <MetricTile label="Avg Wait in Queue (Wq)" value="—" unit="pending" />
+              </div>
+
+              {/* Pending Erlang C notice */}
+              <div className="flex items-start gap-2 border border-border bg-muted/20 p-3">
+                <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  <strong className="text-foreground">Erlang C computation pending.</strong>{" "}
+                  P₀, Pq, Lq, Wq, L, and W require the Erlang C formula and will be available once the
+                  M/M/c simulation engine is implemented. Per-server utilization ρ = λ/(c·µ) is computed above.
                 </p>
               </div>
-            )}
 
-            {/* Formula reference */}
-            <div className="border border-border bg-muted/30 p-3">
-              <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">M/M/1 Formulas</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {[
-                  ["ρ = λ / µ", "Utilization"],
-                  ["L = ρ / (1−ρ)", "Avg in system"],
-                  ["Lq = ρ² / (1−ρ)", "Avg in queue"],
-                  ["W = L / λ", "Avg system time"],
-                  ["Wq = Lq / λ", "Avg wait time"],
-                  ["P₀ = 1 − ρ", "Idle probability"],
-                ].map(([f, d]) => (
-                  <div key={f} className="flex items-baseline gap-1.5">
-                    <span className="font-mono text-2xs text-foreground">{f}</span>
-                    <span className="text-2xs text-muted-foreground">— {d}</span>
-                  </div>
-                ))}
+              {/* Unstable warning */}
+              {!mmcTheoretical.is_stable && (
+                <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3">
+                  <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive">
+                    System is <strong>unstable</strong> — arrival rate exceeds total service capacity (ρ ≥ 1).
+                    The queue will grow without bound. Increase µ, c, or decrease λ.
+                  </p>
+                </div>
+              )}
+
+              {/* Formula reference */}
+              <div className="border border-border bg-muted/30 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">M/M/c Formulas</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {[
+                    ["ρ = λ / (c·µ)", "Per-server utilization"],
+                    ["a = λ / µ", "Traffic intensity (Erlangs)"],
+                    ["C(c,a) = Erlang-C", "Probability of waiting"],
+                    ["Lq = C(c,a)·ρ / (1−ρ)²", "Avg items in queue"],
+                    ["Wq = Lq / λ", "Avg wait in queue"],
+                    ["P₀ = [Σaⁿ/n! + aᶜ/(c!(1−ρ))]⁻¹", "Idle probability"],
+                  ].map(([f, d]) => (
+                    <div key={f} className="flex items-baseline gap-1.5">
+                      <span className="font-mono text-2xs text-foreground">{f}</span>
+                      <span className="text-2xs text-muted-foreground">— {d}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
+      {/* ── M/M/c Coming Soon ──────────────────────────────────────────────── */}
+      {modelType === "mmc" && (
+        <div className="border border-dashed border-border bg-muted/20 flex flex-col items-center justify-center py-14 gap-3">
+          <div className="w-12 h-12 border border-border bg-card flex items-center justify-center">
+            <Network className="w-6 h-6 text-muted-foreground/40" strokeWidth={1.5} />
+          </div>
+          <p className="text-sm font-medium text-muted-foreground">M/M/c Simulation Engine Coming Soon</p>
+          <p className="text-xs text-muted-foreground/70 text-center max-w-sm">
+            The multi-server discrete-event simulation (Erlang C, parallel queues, per-server metrics) is
+            under active development. Theoretical parameters above update live.
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="warning" className="text-xs gap-1">
+              <span className="w-1.5 h-1.5 bg-warning inline-block animate-pulse" />
+              In Development
+            </Badge>
+            <Badge variant="stable" className="text-xs">UI Preview Active</Badge>
+          </div>
+          <div className="border border-border bg-card p-4 mt-2 w-full max-w-sm">
+            <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Planned M/M/c Features
+            </p>
+            <div className="flex flex-col gap-2">
+              {[
+                { icon: CheckCircle2, label: "Per-server utilization (ρ = λ/c·µ)", done: true },
+                { icon: CheckCircle2, label: "Traffic intensity display (Erlangs)", done: true },
+                { icon: CheckCircle2, label: "Stability condition check", done: true },
+                { icon: AlertTriangle, label: "Erlang C probability computation", done: false },
+                { icon: AlertTriangle, label: "Lq, Wq, L, W closed-form metrics", done: false },
+                { icon: AlertTriangle, label: "Multi-server discrete-event engine", done: false },
+                { icon: AlertTriangle, label: "Monte Carlo multi-server replications", done: false },
+              ].map(({ icon: Icon, label, done }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <Icon
+                    className={`w-3 h-3 shrink-0 ${done ? "text-success" : "text-muted-foreground/50"}`}
+                    strokeWidth={1.5}
+                  />
+                  <span className={`text-xs ${done ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Monte Carlo Results ─────────────────────────────────────────────── */}
-      {results && (
+      {modelType === "mm1" && results && (
         <>
           {/* Section header */}
           <div className="flex items-center gap-3">
@@ -659,9 +923,9 @@ export function SimulationPage() {
                       type="stepAfter"
                       dataKey="q"
                       stroke={C.primary}
-                      strokeWidth={1.5}
+                      strokeWidth={2}
                       dot={false}
-                      activeDot={{ r: 3, fill: C.primary, strokeWidth: 0 }}
+                      activeDot={{ r: 4, fill: C.primary, strokeWidth: 0 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -697,7 +961,7 @@ export function SimulationPage() {
                       axisLine={false} tickLine={false}
                       allowDecimals={false}
                     />
-                    <Tooltip content={<HistTooltip />} cursor={{ fill: "#f5f5f5" }} />
+                    <Tooltip content={<HistTooltip />} cursor={{ fill: "#ffffff14" }} />
                     <Bar dataKey="count" radius={[0, 0, 0, 0]}>
                       {results.service_time_histogram.map((_, i) => (
                         <Cell
@@ -794,8 +1058,8 @@ export function SimulationPage() {
         </>
       )}
 
-      {/* ── Empty state (no run yet) ────────────────────────────────────────── */}
-      {!results && !isRunning && (
+      {/* ── Empty state (no run yet, M/M/1 only) ──────────────────────────── */}
+      {modelType === "mm1" && !results && !isRunning && (
         <div className="border border-dashed border-border bg-muted/20 flex flex-col items-center justify-center py-14 gap-3">
           <Activity className="w-8 h-8 text-muted-foreground/40" strokeWidth={1.5} />
           <p className="text-sm font-medium text-muted-foreground">No simulation run yet</p>
@@ -823,23 +1087,47 @@ export function SimulationPage() {
           }
         </button>
         {showAssumptions && (
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3">
-            {[
-              ["Single server (M/M/1)", "One scanner station handles the queue. For multi-server systems, use M/M/c."],
-              ["Poisson arrivals", "Package arrivals follow a Poisson process with rate λ. Inter-arrival times are exponential."],
-              ["Exponential service times", "Each package scan time is exponentially distributed with mean 1/µ seconds."],
-              ["FCFS discipline", "First-come, first-served queue ordering. No priority classes."],
-              ["Infinite queue capacity", "No hard queue limit — overflow threshold only triggers a probability flag."],
-              ["Independent replications", "Each Monte Carlo run uses a different LCG seed (seed = 31337 × i), ensuring statistical independence."],
-              ["False positives (2%)", "2% of non-defective packages are incorrectly classified as damaged by the AI model."],
-              ["Deterministic LCG", "Linear Congruential Generator with Knuth MMIX constants ensures reproducibility."],
-              ["Median time-series", "Queue length chart shows the median replication — not averaged — to avoid smoothing artifacts."],
-            ].map(([title, body]) => (
-              <div key={title}>
-                <p className="text-xs font-semibold text-foreground mb-0.5">{title}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
+          <div className="p-4 flex flex-col gap-4">
+            {modelType === "mm1" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3">
+                {[
+                  ["Single server (M/M/1)", "One scanner station handles the queue. For multi-server systems, switch to M/M/c above."],
+                  ["Poisson arrivals", "Package arrivals follow a Poisson process with rate λ. Inter-arrival times are exponential."],
+                  ["Exponential service times", "Each package scan time is exponentially distributed with mean 1/µ seconds."],
+                  ["FCFS discipline", "First-come, first-served queue ordering. No priority classes."],
+                  ["Infinite queue capacity", "No hard queue limit — overflow threshold only triggers a probability flag."],
+                  ["Independent replications", "Each Monte Carlo run uses a different LCG seed (seed = 31337 × i), ensuring statistical independence."],
+                  ["False positives (2%)", "2% of non-defective packages are incorrectly classified as damaged by the AI model."],
+                  ["Deterministic LCG", "Linear Congruential Generator with Knuth MMIX constants ensures reproducibility."],
+                  ["Median time-series", "Queue length chart shows the median replication — not averaged — to avoid smoothing artifacts."],
+                ].map(([title, body]) => (
+                  <div key={title}>
+                    <p className="text-xs font-semibold text-foreground mb-0.5">{title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {modelType === "mmc" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3">
+                {[
+                  ["Multi-server (M/M/c)", "c identical servers draw from a single shared queue. Stability requires ρ = λ/(c·µ) < 1."],
+                  ["Poisson arrivals", "Package arrivals follow a Poisson process with rate λ. Inter-arrival times are exponential."],
+                  ["Exponential service times", "Each scanner's service time is exponentially distributed with mean 1/µ seconds per server."],
+                  ["Shared FCFS queue", "All arriving packages join a single queue and are dispatched to the next free server (FCFS)."],
+                  ["Homogeneous servers", "All c servers have identical service rates µ. Heterogeneous rates require M/M/c(k) extensions."],
+                  ["Erlang C model", "Erlang C gives the probability that an arrival must wait (Pq). Requires solving P₀ iteratively."],
+                  ["Stability condition", "System is stable only when ρ = λ/(c·µ) < 1, i.e., total offered load is below total capacity."],
+                  ["Infinite queue capacity", "No hard queue limit — overflow threshold only triggers a probability flag."],
+                  ["Simulation pending", "M/M/c discrete-event simulation and Erlang C metrics will be added in a future update."],
+                ].map(([title, body]) => (
+                  <div key={title}>
+                    <p className="text-xs font-semibold text-foreground mb-0.5">{title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
