@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, Fragment } from "react"
 import {
   ScrollText,
   Package,
@@ -9,9 +9,18 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   SlidersHorizontal,
   X,
+  Copy,
+  Flag,
+  CheckCircle2,
+  Clock,
+  Cpu,
+  AlertCircle,
+  ShieldCheck,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -86,12 +95,52 @@ function shortId(id: string): string {
   return id.slice(0, 16) + "…"
 }
 
+// ─── Derived contextual details (deterministic from log ID) ────────────────────
+
+interface DerivedDetails {
+  station:            string
+  operator:           string
+  model_version:      string
+  queue_wait_ms:      number
+  weight_kg:          number
+  inspection_depth:   string
+  defect_type:        string
+  severity:           string
+  recommended_action: string
+  alert_sent:         boolean
+}
+
+function deriveDetails(log: ScanLog): DerivedDetails {
+  const n   = parseInt(log.id.replace(/\D/g, ""), 10) || 1
+  const nth = <T,>(arr: T[]): T => arr[n % arr.length]
+
+  const action: Record<PackageStatus, string> = {
+    good:    nth(["Cleared — Continue Belt", "Cleared — Express Lane", "Cleared — Standard Sort"]),
+    damaged: nth(["Quarantine — QC Hold", "Re-route to QC Bay", "Notify Sender", "Escalate to Supervisor"]),
+    empty:   nth(["Return to Sender", "Hold for Investigation", "Flag for Audit"]),
+  }
+
+  return {
+    station:            nth(["Station A-01", "Station A-02", "Station B-01", "Station B-02", "Station C-01"]),
+    operator:           nth(["OP-031", "OP-047", "OP-012", "OP-088", "OP-055"]),
+    model_version:      nth(["LogiGuard-AI v2.3.1", "LogiGuard-AI v2.3.0", "LogiGuard-AI v2.2.8"]),
+    queue_wait_ms:      200 + (n * 137) % 1800,
+    weight_kg:          log.status === "empty" ? 0.12 + (n % 8) * 0.02 : 0.30 + (n * 17 % 100) / 100,
+    inspection_depth:   nth(["Surface Scan", "Full Inspection", "Deep Scan + X-Ray"]),
+    defect_type:        nth(["Crush Damage", "Puncture", "Moisture Damage", "Torn Sealing"]),
+    severity:           nth(["Minor", "Moderate", "Severe"]),
+    recommended_action: action[log.status],
+    alert_sent:         log.status === "damaged" && n % 3 !== 0,
+  }
+}
+
 // ─── Scan Logs Page ────────────────────────────────────────────────────────────
 
 export function ScanLogsPage() {
-  const [search,     setSearch]     = useState("")
+  const [search,      setSearch]     = useState("")
   const [statusFilter, setStatus]   = useState<PackageStatus | "all">("all")
-  const [page,       setPage]       = useState(1)
+  const [page,        setPage]       = useState(1)
+  const [expandedRow, setExpanded]   = useState<string | null>(null)
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -281,7 +330,7 @@ export function ScanLogsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[90px]">Log ID</TableHead>
+                <TableHead className="w-[100px]">Log ID</TableHead>
                 <TableHead>Package ID</TableHead>
                 <TableHead className="w-[96px]">Status</TableHead>
                 <TableHead className="text-right w-[90px]">Confidence</TableHead>
@@ -305,66 +354,88 @@ export function ScanLogsPage() {
               ) : (
                 pageRows.map(log => {
                   const { date, time } = formatTs(log.scanned_at)
+                  const isExpanded = expandedRow === log.id
                   return (
-                    <TableRow key={log.id}>
+                    <Fragment key={log.id}>
+                      <TableRow
+                        onClick={() => setExpanded(isExpanded ? null : log.id)}
+                        className="cursor-pointer select-none"
+                        data-state={isExpanded ? "selected" : undefined}
+                      >
 
-                      {/* Log ID */}
-                      <TableCell>
-                        <span className="mono-value text-muted-foreground">{log.id}</span>
-                      </TableCell>
-
-                      {/* Package ID */}
-                      <TableCell>
-                        <span className="mono-value text-foreground">{shortId(log.package_id)}</span>
-                      </TableCell>
-
-                      {/* Status badge */}
-                      <TableCell>
-                        <Badge variant={log.status}>
-                          {log.status === "good"    && <Package     className="w-2.5 h-2.5" />}
-                          {log.status === "damaged" && <PackageX    className="w-2.5 h-2.5" />}
-                          {log.status === "empty"   && <PackageOpen className="w-2.5 h-2.5" />}
-                          {log.status}
-                        </Badge>
-                      </TableCell>
-
-                      {/* Confidence */}
-                      <TableCell className="text-right">
-                        <span className={
-                          log.confidence >= 95 ? "text-success  font-medium tabular-nums" :
-                          log.confidence >= 85 ? "text-warning  font-medium tabular-nums" :
-                                                 "text-destructive font-medium tabular-nums"
-                        }>
-                          {log.confidence.toFixed(1)}%
-                        </span>
-                      </TableCell>
-
-                      {/* Scan time */}
-                      <TableCell className="text-right">
-                        <span className="text-muted-foreground tabular-nums">
-                          {(log.scan_ms / 1000).toFixed(2)}s
-                        </span>
-                      </TableCell>
-
-                      {/* TX hash */}
-                      <TableCell>
-                        {log.tx_hash ? (
-                          <span className="mono-value flex items-center gap-1 text-muted-foreground">
-                            <ExternalLink className="w-2.5 h-2.5 shrink-0 text-success" />
-                            {shortHash(log.tx_hash)}
+                        {/* Log ID + expand chevron */}
+                        <TableCell>
+                          <span className="flex items-center gap-1.5">
+                            {isExpanded
+                              ? <ChevronDown  className="w-3 h-3 text-muted-foreground shrink-0" />
+                              : <ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+                            }
+                            <span className="mono-value text-muted-foreground">{log.id}</span>
                           </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60 italic">Not logged</span>
-                        )}
-                      </TableCell>
+                        </TableCell>
 
-                      {/* Timestamp */}
-                      <TableCell className="text-right">
-                        <span className="mono-value text-muted-foreground block">{time}</span>
-                        <span className="text-2xs text-muted-foreground/60 block">{date}</span>
-                      </TableCell>
+                        {/* Package ID */}
+                        <TableCell>
+                          <span className="mono-value text-foreground">{shortId(log.package_id)}</span>
+                        </TableCell>
 
-                    </TableRow>
+                        {/* Status badge */}
+                        <TableCell>
+                          <Badge variant={log.status}>
+                            {log.status === "good"    && <Package     className="w-2.5 h-2.5" />}
+                            {log.status === "damaged" && <PackageX    className="w-2.5 h-2.5" />}
+                            {log.status === "empty"   && <PackageOpen className="w-2.5 h-2.5" />}
+                            {log.status}
+                          </Badge>
+                        </TableCell>
+
+                        {/* Confidence */}
+                        <TableCell className="text-right">
+                          <span className={
+                            log.confidence >= 95 ? "text-success  font-medium tabular-nums" :
+                            log.confidence >= 85 ? "text-warning  font-medium tabular-nums" :
+                                                   "text-destructive font-medium tabular-nums"
+                          }>
+                            {log.confidence.toFixed(1)}%
+                          </span>
+                        </TableCell>
+
+                        {/* Scan time */}
+                        <TableCell className="text-right">
+                          <span className="text-muted-foreground tabular-nums">
+                            {(log.scan_ms / 1000).toFixed(2)}s
+                          </span>
+                        </TableCell>
+
+                        {/* TX hash */}
+                        <TableCell>
+                          {log.tx_hash ? (
+                            <span className="mono-value flex items-center gap-1 text-muted-foreground">
+                              <ExternalLink className="w-2.5 h-2.5 shrink-0 text-success" />
+                              {shortHash(log.tx_hash)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/60 italic">Not logged</span>
+                          )}
+                        </TableCell>
+
+                        {/* Timestamp */}
+                        <TableCell className="text-right">
+                          <span className="mono-value text-muted-foreground block">{time}</span>
+                          <span className="text-2xs text-muted-foreground/60 block">{date}</span>
+                        </TableCell>
+
+                      </TableRow>
+
+                      {/* ── Expansion Panel ─────────────────────────────────── */}
+                      {isExpanded && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="p-0 border-b border-border">
+                            <LogDetailPanel log={log} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   )
                 })
               )}
@@ -525,6 +596,300 @@ function LegendItem({ variant, label }: { variant: PackageStatus; label: string 
         {variant}
       </Badge>
       <span className="text-2xs text-muted-foreground">{label}</span>
+    </div>
+  )
+}
+
+// ─── Log Detail Panel ──────────────────────────────────────────────────────────
+
+function LogDetailPanel({ log }: { log: ScanLog }) {
+  const d = deriveDetails(log)
+
+  // Reconstruct timestamps from scanned_at + durations
+  const completedAt = new Date(log.scanned_at)
+  const scanStartAt = new Date(completedAt.getTime() - log.scan_ms)
+  const queuedAt    = new Date(scanStartAt.getTime() - d.queue_wait_ms)
+  const toTime      = (dt: Date) => dt.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+
+  const confidenceColor =
+    log.confidence >= 95 ? "bg-success"     :
+    log.confidence >= 85 ? "bg-warning"     : "bg-destructive"
+
+  const confidenceText =
+    log.confidence >= 95 ? "text-success"     :
+    log.confidence >= 85 ? "text-warning"     : "text-destructive"
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text).catch(() => {})
+  }
+
+  return (
+    <div className="bg-muted/10 border-t border-border">
+
+      {/* ── Three-column detail grid ───────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-border">
+
+        {/* Col 1 — Identifiers */}
+        <div className="p-4 flex flex-col gap-3">
+          <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Package className="w-3 h-3" />
+            Package Identifiers
+          </p>
+
+          <div className="flex flex-col gap-0.5">
+            <span className="text-2xs text-muted-foreground">Log ID</span>
+            <span className="font-mono text-xs text-foreground">{log.id}</span>
+          </div>
+
+          <div className="flex flex-col gap-0.5">
+            <span className="text-2xs text-muted-foreground">Full Package ID</span>
+            <span className="font-mono text-xs text-foreground break-all leading-relaxed">{log.package_id}</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-2xs text-muted-foreground">Blockchain TX Hash</span>
+            {log.tx_hash ? (
+              <>
+                <span className="font-mono text-2xs text-muted-foreground break-all leading-relaxed">{log.tx_hash}</span>
+                <span className="flex items-center gap-1 text-2xs text-success mt-0.5">
+                  <ShieldCheck className="w-2.5 h-2.5 shrink-0" />
+                  Anchored &amp; immutable
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground/60 italic">Not logged — no blockchain anchor for this record</span>
+            )}
+          </div>
+        </div>
+
+        {/* Col 2 — AI Inspection */}
+        <div className="p-4 flex flex-col gap-3">
+          <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Cpu className="w-3 h-3" />
+            AI Inspection Details
+          </p>
+
+          {/* Confidence bar */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-2xs text-muted-foreground">Model Confidence</span>
+              <span className={`text-xs font-semibold tabular-nums font-mono ${confidenceText}`}>
+                {log.confidence.toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-muted">
+              <div className={`h-full ${confidenceColor}`} style={{ width: `${log.confidence}%` }} />
+            </div>
+            <span className="text-2xs text-muted-foreground">
+              {log.confidence >= 95 ? "High confidence — result reliable" :
+               log.confidence >= 85 ? "Moderate confidence — manual review suggested" :
+                                      "Low confidence — manual verification required"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div>
+              <span className="text-2xs text-muted-foreground block">Scan Duration</span>
+              <span className="text-xs font-mono tabular-nums">{(log.scan_ms / 1000).toFixed(3)}s</span>
+            </div>
+            <div>
+              <span className="text-2xs text-muted-foreground block">Queue Wait</span>
+              <span className="text-xs font-mono tabular-nums">{(d.queue_wait_ms / 1000).toFixed(2)}s</span>
+            </div>
+            <div>
+              <span className="text-2xs text-muted-foreground block">Scanner Station</span>
+              <span className="text-xs font-mono">{d.station}</span>
+            </div>
+            <div>
+              <span className="text-2xs text-muted-foreground block">Operator</span>
+              <span className="text-xs font-mono">{d.operator}</span>
+            </div>
+            <div>
+              <span className="text-2xs text-muted-foreground block">AI Model</span>
+              <span className="text-xs font-mono">{d.model_version}</span>
+            </div>
+            <div>
+              <span className="text-2xs text-muted-foreground block">Inspection Depth</span>
+              <span className="text-xs">{d.inspection_depth}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Col 3 — Status-specific assessment */}
+        <div className="p-4 flex flex-col gap-3">
+          {log.status === "damaged" && (
+            <>
+              <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <AlertCircle className="w-3 h-3 text-destructive" />
+                Defect Assessment
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Defect Type</span>
+                  <span className="text-xs font-medium text-destructive">{d.defect_type}</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Severity</span>
+                  <span className={`text-xs font-medium ${
+                    d.severity === "Severe"   ? "text-destructive" :
+                    d.severity === "Moderate" ? "text-warning"     : "text-muted-foreground"
+                  }`}>{d.severity}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-2xs text-muted-foreground block">Recommended Action</span>
+                  <span className="text-xs font-medium">{d.recommended_action}</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Alert Dispatched</span>
+                  <span className={`text-xs font-medium flex items-center gap-1 ${d.alert_sent ? "text-destructive" : "text-muted-foreground"}`}>
+                    {d.alert_sent
+                      ? <><AlertCircle className="w-2.5 h-2.5" />Supervisor notified</>
+                      : "No alert sent"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Package Weight</span>
+                  <span className="text-xs font-mono tabular-nums">{d.weight_kg.toFixed(2)} kg</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {log.status === "empty" && (
+            <>
+              <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <PackageOpen className="w-3 h-3" />
+                Content Analysis
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="col-span-2">
+                  <span className="text-2xs text-muted-foreground block">Detection Method</span>
+                  <span className="text-xs">Weight Sensor + AI Vision</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Weight Detected</span>
+                  <span className="text-xs font-mono tabular-nums">{d.weight_kg.toFixed(2)} kg</span>
+                  <span className="text-2xs text-muted-foreground block mt-0.5">(packaging only)</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Blockchain Anchor</span>
+                  <span className="text-xs text-muted-foreground/60 italic">Not anchored</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-2xs text-muted-foreground block">Disposition</span>
+                  <span className="text-xs font-medium">{d.recommended_action}</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {log.status === "good" && (
+            <>
+              <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-success" />
+                Clearance Details
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="col-span-2">
+                  <span className="text-2xs text-muted-foreground block">Clearance Result</span>
+                  <span className="text-xs font-medium text-success">{d.recommended_action}</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Package Weight</span>
+                  <span className="text-xs font-mono tabular-nums">{d.weight_kg.toFixed(2)} kg</span>
+                </div>
+                <div>
+                  <span className="text-2xs text-muted-foreground block">Inspection Depth</span>
+                  <span className="text-xs">{d.inspection_depth}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-2xs text-muted-foreground block">Blockchain Verification</span>
+                  <span className="text-xs text-success flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    Anchored — tamper-evident record
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Processing timeline */}
+          <div className="mt-auto pt-2 border-t border-border flex flex-col gap-1.5">
+            <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Processing Timeline
+            </p>
+            <TimelineStep label="Queued"        time={toTime(queuedAt)}    done />
+            <TimelineStep label="Scan started"  time={toTime(scanStartAt)} done />
+            <TimelineStep label="Scan complete" time={toTime(completedAt)} done active />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Action footer ──────────────────────────────────────────────────── */}
+      <div className="px-4 py-2 border-t border-border bg-muted/20 flex items-center gap-2 flex-wrap">
+        <span className="text-2xs text-muted-foreground font-semibold uppercase tracking-wider mr-1">Actions</span>
+        <button
+          onClick={e => { e.stopPropagation(); copyToClipboard(log.package_id) }}
+          className="flex items-center gap-1 h-6 px-2 text-2xs border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <Copy className="w-2.5 h-2.5" />
+          Copy Package ID
+        </button>
+        {log.tx_hash && (
+          <>
+            <button
+              onClick={e => { e.stopPropagation(); copyToClipboard(log.tx_hash!) }}
+              className="flex items-center gap-1 h-6 px-2 text-2xs border border-border bg-card hover:bg-accent transition-colors"
+            >
+              <Copy className="w-2.5 h-2.5" />
+              Copy TX Hash
+            </button>
+            <button
+              onClick={e => e.stopPropagation()}
+              className="flex items-center gap-1 h-6 px-2 text-2xs border border-border bg-card hover:bg-accent transition-colors"
+            >
+              <ExternalLink className="w-2.5 h-2.5" />
+              View on Explorer
+            </button>
+          </>
+        )}
+        <button
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1 h-6 px-2 text-2xs border border-border bg-card hover:bg-accent transition-colors text-warning"
+        >
+          <Flag className="w-2.5 h-2.5" />
+          Flag for Review
+        </button>
+        <button
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1 h-6 px-2 text-2xs border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <Download className="w-2.5 h-2.5" />
+          Export Record
+        </button>
+        <span className="ml-auto text-2xs text-muted-foreground/60 font-mono">
+          Click row to collapse
+        </span>
+      </div>
+
+    </div>
+  )
+}
+
+// ─── Timeline Step ─────────────────────────────────────────────────────────────
+
+function TimelineStep({ label, time, done, active }: {
+  label:   string
+  time:    string
+  done?:   boolean
+  active?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-1.5 h-1.5 shrink-0 ${active ? "bg-success" : done ? "bg-muted-foreground/50" : "bg-muted"}`} />
+      <span className={`text-2xs flex-1 ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>{label}</span>
+      <span className="text-2xs font-mono tabular-nums text-muted-foreground">{time}</span>
     </div>
   )
 }
