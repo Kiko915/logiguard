@@ -47,7 +47,8 @@ export class ScannerService {
       confidence: input.confidence,
       scan_time_ms: input.scan_time_ms,
       frame_data_url: null,
-      metadata: input.metadata ?? null,
+      // Appwrite stores metadata as a plain string attribute — serialize to JSON
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
     };
 
     const scanLog = (await this.scanLogRepo.create(scanLogPayload)) as unknown as ScanLog;
