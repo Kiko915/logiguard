@@ -75,6 +75,7 @@ export function LiveScannerPage() {
   const [isScanning,     setIsScanning]     = useState(false);
   const [isAnalyzing,    setIsAnalyzing]    = useState(false);
   const [cameraError,    setCameraError]    = useState<string | null>(null);
+  const [rateLimitMsg,   setRateLimitMsg]   = useState<string | null>(null);
 
   // ── Scan data ────────────────────────────────────────────────────────────────
   const [recentScans,  setRecentScans]  = useState<ScanResult[]>([]);
@@ -191,8 +192,19 @@ export function LiveScannerPage() {
         setIsScanning(false);
       }
 
-    } catch (err) {
-      console.error("Analysis failed:", err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("429") || msg.includes("rate") || msg.includes("quota") || msg.includes("RATE_LIMITED")) {
+        // Parse retry delay from backend message if available
+        const retryMatch = msg.match(/(\d+)\s*s/i);
+        const seconds    = retryMatch ? parseInt(retryMatch[1], 10) : 60;
+        setRateLimitMsg(`Gemini rate limit reached — scanning paused. Retry in ~${seconds}s.`);
+        setIsScanning(false);
+        // Auto-clear the notice after the suggested retry window
+        setTimeout(() => setRateLimitMsg(null), seconds * 1000);
+      } else {
+        console.error("Analysis failed:", err);
+      }
     } finally {
       analyzingRef.current = false;
       setIsAnalyzing(false);
@@ -266,18 +278,29 @@ export function LiveScannerPage() {
         </div>
       )}
 
+      {/* ── Gemini rate-limit notice ─────────────────────────────────────────── */}
+      {rateLimitMsg && (
+        <div className="flex items-start gap-2 border border-warning/40 bg-warning/5 px-3 py-2.5">
+          <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
+          <p className="text-xs text-warning">{rateLimitMsg}</p>
+          <button onClick={() => setRateLimitMsg(null)} className="ml-auto shrink-0">
+            <X className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
 
         {/* ── Left Column: Camera Feed ─────────────────────────────────────── */}
         <div className="flex flex-col gap-4 lg:h-[540px]">
           <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="border-b border-border bg-muted/30 pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-md">
+              <div className="flex items-center gap-4">
+                <CardTitle className="flex items-center gap-2 text-md shrink-0">
                   <Camera className="w-4 h-4 text-muted-foreground" />
                   Camera Feed
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-auto">
                   {isAnalyzing && (
                     <Badge variant="warning" className="text-2xs gap-1">
                       <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -306,7 +329,7 @@ export function LiveScannerPage() {
                 muted
                 playsInline
                 className={cn(
-                  "w-full h-full object-cover",
+                  "w-full h-full object-cover [transform:scaleX(-1)]",
                   !isCameraActive && "hidden",
                 )}
               />

@@ -28,10 +28,25 @@ router.post("/analyze", authMiddleware, async (c) => {
   const validated = await validateBody(c, analyzeFrameSchema);
   if (validated instanceof Response) return validated;
 
-  const result = await visionService.analyzeFrame(validated.data.frame_data_url);
-
-  const body: ApiSuccess<typeof result> = { success: true, data: result };
-  return c.json(body);
+  try {
+    const result = await visionService.analyzeFrame(validated.data.frame_data_url);
+    const body: ApiSuccess<typeof result> = { success: true, data: result };
+    return c.json(body);
+  } catch (err: unknown) {
+    // Surface Gemini rate-limit errors as 429 so the frontend can handle them
+    const msg = err instanceof Error ? err.message : String(err);
+    const isQuota = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota");
+    if (isQuota) {
+      // Extract retry delay from Gemini error if present (e.g. "retry in 36s")
+      const retryMatch = msg.match(/retry[^0-9]*(\d+)/i);
+      const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : 60;
+      return c.json(
+        { success: false, error: { code: "RATE_LIMITED", message: "Gemini API rate limit reached. Please wait before scanning again.", retry_after_s: retryAfter } },
+        429,
+      );
+    }
+    throw err; // let the global error handler deal with anything else
+  }
 });
 
 // ─── POST /scanner/scan ────────────────────────────────────────────────────────
