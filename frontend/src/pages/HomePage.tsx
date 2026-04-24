@@ -670,7 +670,7 @@ export function HomePage() {
 
       {/* ── System Info Row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2">
-        <InfoTile icon={Cpu}      label="AI Engine"  value="Gemini 2.0 Flash"  sub="Zero-shot vision · via backend"   />
+        <InfoTile icon={Cpu}      label="AI Engine"  value="Gemini 2.5 Flash"  sub="Zero-shot vision · via backend"   />
         <InfoTile icon={Link}     label="Blockchain" value="Ganache Testnet"  sub="Chain ID 1337 · Port 8545"      />
         <InfoTile icon={Database} label="Database"   value="Appwrite"         sub="Documents DB · Collections ×3"  />
       </div>

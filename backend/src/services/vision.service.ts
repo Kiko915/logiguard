@@ -59,7 +59,7 @@ export class VisionService {
     const start = Date.now();
 
     const response = await this.ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       contents: [
         {
           parts: [
