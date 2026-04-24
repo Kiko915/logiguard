@@ -129,12 +129,14 @@ const STATUS_DIST_FALLBACK = [
 
 const DONUT_COLORS = [C.good, C.damaged, C.empty]
 
-const MM1_BAR_DATA = [
-  { label: "ρ (Util.)", value: 0.71 },
-  { label: "L (Items)", value: 2.45 },
-  { label: "Wq (s)",    value: 0.32 },
-  { label: "P(ovfl)",   value: 0.042 },
-]
+/** Built from live M/M/1 metrics; falls back to zeroes for empty state */
+function buildMM1BarData(rho: number, L: number, Wq_s: number) {
+  return [
+    { label: "ρ (Util.)", value: parseFloat(Math.min(rho, 9.99).toFixed(3)) },
+    { label: "L (Items)", value: parseFloat(Math.min(L,   9.99).toFixed(3)) },
+    { label: "Wq (s)",    value: parseFloat(Math.min(Wq_s, 9.99).toFixed(3)) },
+  ]
+}
 
 const SCAN_LOGS = [
   { id: "a3f2c1d4", status: "good",    confidence: 97.8, scan_ms: 2340, tx: "0x4a2b…e91f", time: "14:32:15" },
@@ -260,6 +262,24 @@ export function HomePage() {
   [liveStats])
 
   const total = statusDist.reduce((s, d) => s + d.value, 0)
+
+  /**
+   * Derive M/M/1 theoretical metrics from real scan data.
+   * λ is estimated as total_scans_24h / 24 (since the stats endpoint
+   * covers the last 24 hours). µ comes from the backend-derived service rate.
+   */
+  const mm1 = useMemo(() => {
+    if (total === 0 || !derivedMu) return null
+    const lambda  = total / 24        // packages per hour (24-h window)
+    const mu      = derivedMu
+    const rho     = lambda / mu
+    const stable  = rho < 1
+    const L       = stable ? rho / (1 - rho)         : Infinity
+    const Lq      = stable ? rho ** 2 / (1 - rho)    : Infinity
+    const Wq_hr   = stable ? Lq / lambda              : Infinity
+    const Wq_s    = Wq_hr * 3600
+    return { lambda, mu, rho, L, Lq, Wq_s, stable }
+  }, [total, derivedMu])
 
   const liveKpiStats = useMemo(() => {
     if (!liveStats) return STATS_FALLBACK
@@ -470,35 +490,45 @@ export function HomePage() {
               <Activity className="w-3.5 h-3.5" />
               M/M/1 Queue Analysis
             </CardTitle>
-            <CardDescription>Theoretical metrics — current shift parameters</CardDescription>
-            <Badge variant="stable" className="text-2xs self-start">Stable</Badge>
+            <CardDescription>
+              {mm1
+                ? `Derived from last 24 h · λ ≈ ${Math.round(mm1.lambda)}/hr · µ ≈ ${Math.round(mm1.mu)}/hr`
+                : "Theoretical metrics — run scans to derive real values"}
+            </CardDescription>
+            {mm1 && (
+              <Badge variant={mm1.stable ? "stable" : "unstable"} className="text-2xs self-start">
+                {mm1.stable ? "Stable" : "Unstable — ρ ≥ 1"}
+              </Badge>
+            )}
           </CardHeader>
           <CardContent className="pr-4">
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={MM1_BAR_DATA} margin={{ top: 4, right: 0, left: -28, bottom: 0 }} barSize={28}>
-                <CartesianGrid strokeDasharray="2 4" stroke={C.grid} horizontal={true} vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: C.text }}
-                  axisLine={false} tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: C.text }}
-                  axisLine={false} tickLine={false}
-                  domain={[0, 3]}
-                  allowDecimals
-                />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: "#f5f5f5" }} />
-                <Bar dataKey="value" radius={[0, 0, 0, 0]}>
-                  {MM1_BAR_DATA.map((d, i) => (
-                    <Cell
-                      key={i}
-                      fill={d.value >= 0.9 ? C.damaged : d.value >= 0.7 ? C.warn : C.primary}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {!mm1 ? (
+              <div className="flex flex-col items-center justify-center h-[120px] gap-2 text-muted-foreground">
+                <BarChart3 className="w-7 h-7 opacity-20" strokeWidth={1.5} />
+                <p className="text-xs opacity-50">No scan data — M/M/1 metrics unavailable</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={120}>
+                <BarChart
+                  data={buildMM1BarData(mm1.rho, mm1.L, mm1.Wq_s)}
+                  margin={{ top: 4, right: 0, left: -28, bottom: 0 }}
+                  barSize={28}
+                >
+                  <CartesianGrid strokeDasharray="2 4" stroke={C.grid} horizontal={true} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.text }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: C.text }} axisLine={false} tickLine={false} allowDecimals />
+                  <Tooltip content={<BarTooltip />} cursor={{ fill: C.grid + "33" }} />
+                  <Bar dataKey="value" radius={[0, 0, 0, 0]}>
+                    {buildMM1BarData(mm1.rho, mm1.L, mm1.Wq_s).map((d, i) => (
+                      <Cell
+                        key={i}
+                        fill={d.value >= 0.9 ? C.damaged : d.value >= 0.7 ? C.warn : C.primary}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -509,25 +539,46 @@ export function HomePage() {
               <Activity className="w-3.5 h-3.5" />
               Queue Key Values
             </CardTitle>
-            <CardDescription>λ = 900/hr · μ = 1,268/hr</CardDescription>
+            <CardDescription>
+              {mm1
+                ? `λ ≈ ${Math.round(mm1.lambda)}/hr · µ ≈ ${Math.round(mm1.mu)}/hr`
+                : "Awaiting scan data"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            <QueueMetric label="Utilization (ρ)"         value="0.71"  status="warn" />
-            <Separator />
-            <QueueMetric label="Avg Items in System (L)"  value="2.45"  />
-            <QueueMetric label="Avg Wait Time (Wq)"       value="0.32 s" />
-            <QueueMetric label="Overflow Probability"     value="4.2%"  />
-            <Separator />
-            {/* Utilization bar */}
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-2xs text-muted-foreground">Capacity used</span>
-                <span className="text-2xs font-medium">71%</span>
+            {!mm1 ? (
+              <div className="flex flex-col items-center justify-center py-6 gap-2 text-muted-foreground">
+                <Activity className="w-7 h-7 opacity-20" strokeWidth={1.5} />
+                <p className="text-xs opacity-50 text-center">
+                  Queue metrics will appear once scans are recorded.
+                </p>
               </div>
-              <div className="w-full h-1 bg-muted">
-                <div className="h-full bg-warning transition-all" style={{ width: "71%" }} />
-              </div>
-            </div>
+            ) : (
+              <>
+                <QueueMetric
+                  label="Utilization (ρ)"
+                  value={mm1.rho.toFixed(3)}
+                  status={mm1.rho >= 1 ? "danger" : mm1.rho >= 0.8 ? "warn" : undefined}
+                />
+                <Separator />
+                <QueueMetric label="Avg Items in System (L)"  value={isFinite(mm1.L)     ? mm1.L.toFixed(2)           : "∞"} />
+                <QueueMetric label="Avg Wait Time (Wq)"       value={isFinite(mm1.Wq_s)  ? `${mm1.Wq_s.toFixed(2)} s` : "∞"} />
+                <Separator />
+                {/* Utilization bar */}
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-2xs text-muted-foreground">Capacity used</span>
+                    <span className="text-2xs font-medium">{(Math.min(mm1.rho, 1) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full h-1 bg-muted">
+                    <div
+                      className={`h-full transition-all ${mm1.rho >= 1 ? "bg-destructive" : mm1.rho >= 0.8 ? "bg-warning" : "bg-success"}`}
+                      style={{ width: `${Math.min(mm1.rho * 100, 100).toFixed(1)}%` }}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -664,11 +715,14 @@ function LegendItem({ color, label, count }: { color: string; label: string; cou
 }
 
 // ─── Queue Metric Row ──────────────────────────────────────────────────────────
-function QueueMetric({ label, value, status }: { label: string; value: string; status?: "warn" }) {
+function QueueMetric({ label, value, status }: { label: string; value: string; status?: "warn" | "danger" }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-semibold tabular-nums ${status === "warn" ? "text-warning" : ""}`}>
+      <span className={`text-xs font-semibold tabular-nums ${
+        status === "danger" ? "text-destructive" :
+        status === "warn"   ? "text-warning"     : ""
+      }`}>
         {value}
       </span>
     </div>
