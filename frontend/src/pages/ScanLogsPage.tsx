@@ -50,6 +50,8 @@ interface ScanLog {
   scan_ms:     number          // mapped from backend scan_time_ms
   tx_hash:     string | null   // null — tx_hash lives on the Package record
   scanned_at:  string          // mapped from backend created_at
+  reason:      string | null   // Gemini analysis reason (from metadata JSON)
+  issues:      string[]        // Gemini detected issues (from metadata JSON)
 }
 
 /** Raw shape returned by GET /api/v1/scanner/logs */
@@ -60,6 +62,7 @@ interface ApiScanLog {
   confidence:   number         // 0–1
   scan_time_ms: number
   created_at:   string
+  metadata:     string | null  // JSON string: { reason, issues }
 }
 
 /** Wrapper returned by GET /api/v1/scanner/stats */
@@ -182,15 +185,29 @@ export function ScanLogsPage() {
     })
     api.get<LogsResponse>(`/api/v1/scanner/logs?${params}`)
       .then(res => {
-        const mapped: ScanLog[] = res.data.map(doc => ({
-          id:         doc.id,
-          package_id: doc.package_id,
-          status:     doc.status,
-          confidence: doc.confidence * 100,   // 0–1 → 0–100
-          scan_ms:    doc.scan_time_ms,
-          tx_hash:    null,
-          scanned_at: doc.created_at,
-        }))
+        const mapped: ScanLog[] = res.data.map(doc => {
+          // Parse the Gemini analysis stored as a JSON string in metadata
+          let reason: string | null = null
+          let issues: string[] = []
+          if (doc.metadata) {
+            try {
+              const parsed = JSON.parse(doc.metadata)
+              reason = typeof parsed.reason === "string" ? parsed.reason : null
+              issues = Array.isArray(parsed.issues) ? parsed.issues.map(String) : []
+            } catch { /* ignore malformed metadata */ }
+          }
+          return {
+            id:         doc.id,
+            package_id: doc.package_id,
+            status:     doc.status,
+            confidence: doc.confidence * 100,   // 0–1 → 0–100
+            scan_ms:    doc.scan_time_ms,
+            tx_hash:    null,
+            scanned_at: doc.created_at,
+            reason,
+            issues,
+          }
+        })
         setLogs(mapped)
         setTotal(res.meta?.total ?? 0)
       })
@@ -749,6 +766,29 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
                                       "Low confidence — manual verification required"}
             </span>
           </div>
+
+          {/* Gemini analysis reason */}
+          {log.reason && (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs text-muted-foreground">AI Analysis</span>
+              <p className="text-xs text-foreground leading-relaxed">{log.reason}</p>
+            </div>
+          )}
+
+          {/* Detected issues */}
+          {log.issues.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs text-muted-foreground">Detected Issues</span>
+              <ul className="flex flex-col gap-0.5">
+                {log.issues.map((issue, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-destructive">
+                    <span className="mt-1 w-1 h-1 bg-destructive shrink-0 inline-block" />
+                    {issue}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
             <div>
