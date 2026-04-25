@@ -45,12 +45,13 @@ interface AnalyzeResult {
 }
 
 interface ScanResult {
-  id:          string;
-  status:      PackageStatus;
-  confidence:  number;
-  time:        string;
-  reason:      string;
-  scan_ms:     number;
+  id:             string;
+  status:         PackageStatus;
+  confidence:     number;
+  time:           string;
+  reason:         string;
+  scan_ms:        number;
+  lowConfidence:  boolean;   // true when confidence < configured threshold
 }
 
 interface ApiWrapper<T> { success: boolean; data: T }
@@ -81,16 +82,24 @@ export function LiveScannerPage() {
   const [recentScans,  setRecentScans]  = useState<ScanResult[]>([]);
   const [lastResult,   setLastResult]   = useState<AnalyzeResult | null>(null);
 
-  // ── Config state ────────────────────────────────────────────────────────────
-  const [isConfigOpen,          setIsConfigOpen]          = useState(false);
-  const [confidenceThreshold,   setConfidenceThreshold]   = useState("85");
-  const [scanIntervalS,         setScanIntervalS]         = useState("4");
-  const [autoPauseOnDefect,     setAutoPauseOnDefect]     = useState(true);
+  // ── Config state (applied values) ───────────────────────────────────────────
+  const [isConfigOpen,        setIsConfigOpen]        = useState(false);
+  const [confidenceThreshold, setConfidenceThreshold] = useState("85");
+  const [scanIntervalS,       setScanIntervalS]       = useState("4");
+  const [autoPauseOnDefect,   setAutoPauseOnDefect]   = useState(true);
+  const [selectedDeviceId,    setSelectedDeviceId]    = useState<string>("");
+
+  // ── Config draft state (modal edits before Save) ─────────────────────────────
+  const [draftInterval,    setDraftInterval]    = useState("4");
+  const [draftThreshold,   setDraftThreshold]   = useState("85");
+  const [draftAutoPause,   setDraftAutoPause]   = useState(true);
+  const [draftDeviceId,    setDraftDeviceId]    = useState<string>("");
+  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
 
   // ── Refs ─────────────────────────────────────────────────────────────────────
-  const videoRef   = useRef<HTMLVideoElement>(null);
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const streamRef  = useRef<MediaStream | null>(null);
+  const videoRef     = useRef<HTMLVideoElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const streamRef    = useRef<MediaStream | null>(null);
   const analyzingRef = useRef(false); // avoid closure-stale isAnalyzing in interval
 
   // ── Session stats (derived from recentScans) ──────────────────────────────
@@ -109,22 +118,35 @@ export function LiveScannerPage() {
 
   // ── Camera lifecycle ────────────────────────────────────────────────────────
 
-  const startCamera = useCallback(async () => {
-    setCameraError(null);
+  /** Enumerate video input devices (labels available only after permission granted). */
+  const enumerateDevices = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
-      });
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setAvailableDevices(all.filter(d => d.kind === "videoinput"));
+    } catch { /* silently ignore — not all browsers support enumerateDevices */ }
+  }, []);
+
+  const startCamera = useCallback(async (deviceId?: string) => {
+    setCameraError(null);
+    const id = deviceId ?? selectedDeviceId;
+    try {
+      const videoConstraints: MediaTrackConstraints = id
+        ? { deviceId: { exact: id }, width: { ideal: 640 }, height: { ideal: 480 } }
+        : { facingMode: "environment",  width: { ideal: 640 }, height: { ideal: 480 } };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
       setIsCameraActive(true);
+      // Enumerate after permission so labels are populated
+      await enumerateDevices();
     } catch {
       setCameraError("Camera permission denied or no device available. Allow camera access and try again.");
     }
-  }, []);
+  }, [selectedDeviceId, enumerateDevices]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -167,13 +189,15 @@ export function LiveScannerPage() {
 
       setLastResult(result);
 
+      const threshold = Math.min(100, Math.max(0, parseFloat(confidenceThreshold) || 85));
       const newScan: ScanResult = {
-        id:         generatePackageId(),
-        status:     result.status,
-        confidence: result.confidence,
-        time:       new Date().toLocaleTimeString("en-PH", { hour12: false }),
-        reason:     result.reason,
+        id:            generatePackageId(),
+        status:        result.status,
+        confidence:    result.confidence,
+        time:          new Date().toLocaleTimeString("en-PH", { hour12: false }),
+        reason:        result.reason,
         scan_ms,
+        lowConfidence: result.confidence < threshold,
       };
 
       setRecentScans(prev => [newScan, ...prev].slice(0, 10));
@@ -215,7 +239,7 @@ export function LiveScannerPage() {
       analyzingRef.current = false;
       setIsAnalyzing(false);
     }
-  }, [autoPauseOnDefect]);
+  }, [autoPauseOnDefect, confidenceThreshold]);
 
   // ── Scanning interval ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -256,7 +280,18 @@ export function LiveScannerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setIsConfigOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              // Pre-fill drafts from currently applied values before opening
+              setDraftInterval(scanIntervalS);
+              setDraftThreshold(confidenceThreshold);
+              setDraftAutoPause(autoPauseOnDefect);
+              setDraftDeviceId(selectedDeviceId);
+              setIsConfigOpen(true);
+            }}
+          >
             <Settings2 className="w-3.5 h-3.5 mr-2" />
             Config
           </Button>
@@ -442,7 +477,15 @@ export function LiveScannerPage() {
                           <span className="text-2xs text-muted-foreground font-mono tabular-nums">{scan.time}</span>
                         </div>
                         <div className="flex items-center justify-between mb-0.5">
-                          <Badge variant={scan.status} className="text-2xs uppercase">{scan.status}</Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant={scan.status} className="text-2xs uppercase">{scan.status}</Badge>
+                            {scan.lowConfidence && (
+                              <Badge variant="warning" className="text-2xs gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                Low confidence
+                              </Badge>
+                            )}
+                          </div>
                           <span className="text-2xs text-muted-foreground tabular-nums">{scan.confidence.toFixed(1)}%</span>
                         </div>
                         <p className="text-2xs text-muted-foreground truncate leading-relaxed">{scan.reason}</p>
@@ -496,21 +539,48 @@ export function LiveScannerPage() {
       {isConfigOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="w-full max-w-sm bg-card border border-border shadow-md flex flex-col">
+
+            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
               <h3 className="text-md font-semibold text-foreground">Scanner Configuration</h3>
               <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(false)} className="h-6 w-6">
                 <X className="w-4 h-4 text-muted-foreground" />
               </Button>
             </div>
+
             <div className="p-4 flex flex-col gap-4">
 
+              {/* ── Camera Device ──────────────────────────────────────────── */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="device" className="text-xs">Camera Device</Label>
+                <select
+                  id="device"
+                  value={draftDeviceId}
+                  onChange={e => setDraftDeviceId(e.target.value)}
+                  className="h-9 w-full border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">System default</option>
+                  {availableDevices.map((d, i) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || `Camera ${i + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-2xs text-muted-foreground">
+                  {availableDevices.length === 0
+                    ? "Start the camera once to populate device list."
+                    : `${availableDevices.length} device${availableDevices.length !== 1 ? "s" : ""} found.`}
+                </p>
+              </div>
+
+              {/* ── Scan Interval ──────────────────────────────────────────── */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="interval" className="text-xs">Scan Interval (seconds)</Label>
                 <Input
                   id="interval"
                   type="number"
-                  value={scanIntervalS}
-                  onChange={e => setScanIntervalS(e.target.value)}
+                  value={draftInterval}
+                  onChange={e => setDraftInterval(e.target.value)}
                   min="4"
                   max="30"
                   step="1"
@@ -520,13 +590,14 @@ export function LiveScannerPage() {
                 </p>
               </div>
 
+              {/* ── Confidence Threshold ───────────────────────────────────── */}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="threshold" className="text-xs">Confidence Threshold (%)</Label>
                 <Input
                   id="threshold"
                   type="number"
-                  value={confidenceThreshold}
-                  onChange={e => setConfidenceThreshold(e.target.value)}
+                  value={draftThreshold}
+                  onChange={e => setDraftThreshold(e.target.value)}
                   min="50"
                   max="100"
                 />
@@ -535,6 +606,7 @@ export function LiveScannerPage() {
                 </p>
               </div>
 
+              {/* ── Auto-pause ─────────────────────────────────────────────── */}
               <div className="flex items-center justify-between pt-1">
                 <Label htmlFor="auto-pause" className="text-xs cursor-pointer select-none flex-1">
                   Auto-pause on defect detection
@@ -542,15 +614,40 @@ export function LiveScannerPage() {
                 <input
                   type="checkbox"
                   id="auto-pause"
-                  checked={autoPauseOnDefect}
-                  onChange={e => setAutoPauseOnDefect(e.target.checked)}
+                  checked={draftAutoPause}
+                  onChange={e => setDraftAutoPause(e.target.checked)}
                   className="w-3.5 h-3.5 accent-primary cursor-pointer"
                 />
               </div>
             </div>
+
+            {/* Footer */}
             <div className="p-3 border-t border-border bg-muted/20 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsConfigOpen(false)}>Cancel</Button>
-              <Button size="sm" onClick={() => setIsConfigOpen(false)}>Save Changes</Button>
+              <Button variant="outline" size="sm" onClick={() => setIsConfigOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  // Apply all settings
+                  setScanIntervalS(draftInterval);
+                  setConfidenceThreshold(draftThreshold);
+                  setAutoPauseOnDefect(draftAutoPause);
+
+                  // Restart camera if device changed
+                  if (draftDeviceId !== selectedDeviceId) {
+                    setSelectedDeviceId(draftDeviceId);
+                    if (isCameraActive) {
+                      stopCamera();
+                      setTimeout(() => startCamera(draftDeviceId), 100);
+                    }
+                  }
+
+                  setIsConfigOpen(false);
+                }}
+              >
+                Save Changes
+              </Button>
             </div>
           </div>
         </div>
