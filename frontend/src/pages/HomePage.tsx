@@ -599,7 +599,7 @@ export function HomePage() {
                 <span className="w-1.5 h-1.5 bg-success inline-block mr-1" />
                 Live
               </Badge>
-              <Button variant="ghost" size="xs">
+              <Button variant="ghost" size="xs" onClick={() => navigate("/scan-logs")}>
                 View All <ChevronRight className="w-3 h-3" />
               </Button>
             </div>
