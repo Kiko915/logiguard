@@ -443,8 +443,8 @@ export function SimulationPage() {
         setResults(aggregateReplications(reps, { ...p, servers: c }, true))
       } else {
         // M/M/1: backend call — handles Appwrite persistence + blockchain logging
-        // NOTE: api.post<T> returns json.data directly, so T = BackendSimResult (not the wrapper)
-        const data = await api.post<BackendSimResult>("/api/v1/simulation/run", {
+        // api.post<T> returns res.json() as T — backend wraps in { success, data }, so unwrap .data
+        const resp = await api.post<{ success: boolean; data: BackendSimResult }>("/api/v1/simulation/run", {
           arrival_rate:             form.arrival_rate,
           service_rate:             form.service_rate,
           defect_rate:              form.defect_rate / 100,
@@ -452,7 +452,7 @@ export function SimulationPage() {
           replications:             Math.max(100, Math.min(form.replications, 300)),
           queue_overflow_threshold: form.queue_overflow_threshold,
         })
-        setResults(mapBackendResult(data, form.service_rate))
+        setResults(mapBackendResult(resp.data, form.service_rate))
       }
       setRunCount(c => c + 1)
     } catch (err) {
