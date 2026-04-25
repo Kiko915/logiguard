@@ -811,7 +811,7 @@ export function SimulationPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {modelType === "mm1" && activeTheory ? [
+                  {(modelType === "mm1" && activeTheory ? [
                     { label: "Utilization (ρ)",         theory: `${(activeTheory.rho * 100).toFixed(2)}%`,                                                sim: `${(results.avg_utilization * 100).toFixed(2)}%`,  delta: Math.abs(activeTheory.rho - results.avg_utilization) < 0.05 },
                     { label: "Avg Wait in Queue (Wq)",  theory: activeTheory.is_stable ? `${(activeTheory.Wq * 3600).toFixed(2)}s` : "∞",                 sim: `${results.avg_waiting_time_s.toFixed(2)}s`,        delta: activeTheory.is_stable && Math.abs(activeTheory.Wq * 3600 - results.avg_waiting_time_s) < 5 },
                     { label: "Overflow Probability",    theory: "N/A (formula)",                                                                           sim: `${(results.overflow_probability * 100).toFixed(1)}%`, delta: null },
@@ -821,7 +821,7 @@ export function SimulationPage() {
                     { label: "Avg Wait in Queue (Wq)",     theory: mmcFull.isStable ? `${(mmcFull.Wq * 3600).toFixed(2)}s` : "∞",                           sim: `${results.avg_waiting_time_s.toFixed(2)}s`,        delta: mmcFull.isStable && Math.abs(mmcFull.Wq * 3600 - results.avg_waiting_time_s) < 5 },
                     { label: "P(wait) — Erlang C",         theory: mmcFull.isStable ? `${(mmcFull.Pq * 100).toFixed(1)}%` : "100%",                         sim: "N/A (DES)",                                        delta: null },
                     { label: "Throughput",                 theory: mmcFull.isStable ? `${form.arrival_rate.toFixed(0)} pkg/hr` : "—",                        sim: `${results.avg_throughput.toFixed(0)} pkg/hr`,      delta: mmcFull.isStable && Math.abs(form.arrival_rate - results.avg_throughput) / form.arrival_rate < 0.1 },
-                  ].map(row => (
+                  ]).map(row => (
                     <tr key={row.label} className="hover:bg-accent/40">
                       <td className="px-3 py-2 text-xs text-foreground font-medium">{row.label}</td>
                       <td className="px-3 py-2 text-xs text-right font-mono text-muted-foreground">{row.theory}</td>
