@@ -767,29 +767,6 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
             </span>
           </div>
 
-          {/* Gemini analysis reason */}
-          {log.reason && (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-2xs text-muted-foreground">AI Analysis</span>
-              <span className="text-xs text-foreground break-all leading-relaxed">{log.reason}</span>
-            </div>
-          )}
-
-          {/* Detected issues */}
-          {log.issues.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-2xs text-muted-foreground">Detected Issues</span>
-              <ul className="flex flex-col gap-0.5">
-                {log.issues.map((issue, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-destructive">
-                    <span className="mt-1 w-1 h-1 bg-destructive shrink-0 inline-block" />
-                    <span className="break-all">{issue}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
             <div>
               <span className="text-2xs text-muted-foreground block">Scan Duration</span>
@@ -928,6 +905,29 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
           </div>
         </div>
       </div>
+
+      {/* ── AI Analysis — full-width row so text wraps freely ─────────────── */}
+      {(log.reason || log.issues.length > 0) && (
+        <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
+          <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Cpu className="w-3 h-3" />
+            AI Analysis
+          </p>
+          {log.reason && (
+            <p className="text-xs text-foreground leading-relaxed">{log.reason}</p>
+          )}
+          {log.issues.length > 0 && (
+            <ul className="flex flex-col gap-0.5">
+              {log.issues.map((issue, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-xs text-destructive">
+                  <span className="mt-1 w-1 h-1 bg-destructive shrink-0 inline-block" />
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* ── Action footer ──────────────────────────────────────────────────── */}
       <div className="px-4 py-2 border-t border-border bg-muted/20 flex items-center gap-2 flex-wrap">
