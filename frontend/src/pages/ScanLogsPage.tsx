@@ -707,7 +707,7 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
     <div className="bg-muted/10 border-t border-border">
 
       {/* ── Three-column detail grid ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-border">
+      <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-border [&>*]:min-w-0">
 
         {/* Col 1 — Identifiers */}
         <div className="p-4 flex flex-col gap-3">
@@ -743,7 +743,7 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
         </div>
 
         {/* Col 2 — AI Inspection */}
-        <div className="p-4 flex flex-col gap-3">
+        <div className="p-4 flex flex-col gap-3 min-w-0 w-full">
           <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Cpu className="w-3 h-3" />
             AI Inspection Details
@@ -771,7 +771,7 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
           {log.reason && (
             <div className="flex flex-col gap-1">
               <span className="text-2xs text-muted-foreground">AI Analysis</span>
-              <p className="text-xs text-foreground leading-relaxed">{log.reason}</p>
+              <p className="text-xs text-foreground leading-relaxed w-full [overflow-wrap:anywhere]">{log.reason}</p>
             </div>
           )}
 
@@ -783,7 +783,7 @@ function LogDetailPanel({ log }: { log: ScanLog }) {
                 {log.issues.map((issue, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-xs text-destructive">
                     <span className="mt-1 w-1 h-1 bg-destructive shrink-0 inline-block" />
-                    {issue}
+                    <span className="w-full [overflow-wrap:anywhere]">{issue}</span>
                   </li>
                 ))}
               </ul>
