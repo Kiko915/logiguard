@@ -33,6 +33,9 @@ const envSchema = z.object({
 
   // AI Vision (Google Gemini)
   GEMINI_API_KEY: z.string().min(1),
+
+  // AI Analysis (Groq — optional, enables simulation analysis endpoint)
+  GROQ_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

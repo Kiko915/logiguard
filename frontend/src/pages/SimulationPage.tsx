@@ -292,6 +292,16 @@ function aggregateReplications(
 }
 
 // ─── Backend simulation result shape ──────────────────────────────────────────
+// ─── Groq analysis result shape ───────────────────────────────────────────────
+interface SimAnalysisResult {
+  summary:         string
+  findings:        { color: "success" | "warning" | "danger" | "info"; text: string }[]
+  recommendations: { title: string; description: string }[]
+  risk_level:      "low" | "medium" | "high"
+  risk_rationale:  string
+}
+
+// ─── Backend simulation result shape ──────────────────────────────────────────
 // api.post<T> unwraps json.data, so T = the actual SimulationResult from the backend
 interface BackendSimResult {
   id:         string
@@ -376,6 +386,8 @@ export function SimulationPage() {
   const [showAssumptions, setShowAssumptions] = useState(false)
   const [runCount,        setRunCount]        = useState(0)
   const [aiState,         setAiState]         = useState<"idle" | "loading" | "ready">("idle")
+  const [aiAnalysis,      setAiAnalysis]      = useState<SimAnalysisResult | null>(null)
+  const [aiError,         setAiError]         = useState<string | null>(null)
   const [modelType,       setModelType]       = useState<"mm1" | "mmc">("mm1")
   const [statsLoaded,     setStatsLoaded]     = useState(false)
   const [statsError,      setStatsError]      = useState(false)
@@ -469,9 +481,62 @@ export function SimulationPage() {
     setResults(null)
     setRunCount(0)
     setAiState("idle")
+    setAiAnalysis(null)
+    setAiError(null)
     setStatsLoaded(false)
     setStatsError(false)
   }
+
+  const handleGenerateAnalysis = useCallback(async () => {
+    if (!results) return
+    setAiState("loading")
+    setAiError(null)
+    try {
+      const activeTheory = modelType === "mm1" ? theoretical : mmcFull
+      const resp = await api.post<{ success: boolean; data: SimAnalysisResult }>("/api/v1/simulation/analyze", {
+        model_type: modelType,
+        parameters: {
+          arrival_rate:             form.arrival_rate,
+          service_rate:             form.service_rate,
+          defect_rate:              form.defect_rate / 100,
+          shift_hours:              form.shift_hours,
+          replications:             form.replications,
+          queue_overflow_threshold: form.queue_overflow_threshold,
+          ...(modelType === "mmc" && { servers: form.servers }),
+        },
+        theoretical: {
+          rho:       activeTheory.rho,
+          is_stable: modelType === "mm1" ? theoretical.is_stable : mmcFull.isStable,
+          ...(modelType === "mm1" ? {
+            L:  theoretical.is_stable ? theoretical.L  : undefined,
+            Lq: theoretical.is_stable ? theoretical.Lq : undefined,
+            W:  theoretical.is_stable ? theoretical.W  : undefined,
+            Wq: theoretical.is_stable ? theoretical.Wq : undefined,
+          } : {
+            Pq: mmcFull.isStable ? mmcFull.Pq : undefined,
+            P0: mmcFull.isStable ? mmcFull.P0  : undefined,
+            Lq: mmcFull.isStable ? mmcFull.Lq  : undefined,
+            Wq: mmcFull.isStable ? mmcFull.Wq  : undefined,
+          }),
+        },
+        monte_carlo: {
+          overflow_probability:    results.overflow_probability,
+          avg_queue_length:        results.avg_queue_length,
+          avg_waiting_time_s:      results.avg_waiting_time_s,
+          avg_utilization:         results.avg_utilization,
+          avg_throughput:          results.avg_throughput,
+          avg_false_positive_rate: results.avg_false_positive_rate,
+          replications_run:        results.replications_run,
+        },
+      })
+      setAiAnalysis(resp.data)
+      setAiState("ready")
+    } catch (err) {
+      console.error("AI analysis failed:", err)
+      setAiError(err instanceof Error ? err.message : "Analysis failed. Please try again.")
+      setAiState("idle")
+    }
+  }, [results, form, modelType, theoretical, mmcFull])
 
   // ── Derived display values ─────────────────────────────────────────────────
   const rhoColor     = theoretical.rho >= 1 ? "text-destructive" : theoretical.rho >= 0.8 ? "text-warning" : "text-success"
@@ -843,13 +908,13 @@ export function SimulationPage() {
             </CardContent>
           </Card>
 
-          {/* AI Analysis (M/M/1 only) */}
-          {modelType === "mm1" && (
-            <AIAnalysisSection
-              aiState={aiState}
-              onGenerate={() => { setAiState("loading"); setTimeout(() => setAiState("ready"), 1800) }}
-            />
-          )}
+          {/* AI Analysis */}
+          <AIAnalysisSection
+            aiState={aiState}
+            analysis={aiAnalysis}
+            error={aiError}
+            onGenerate={handleGenerateAnalysis}
+          />
         </>
       )}
 
@@ -973,78 +1038,165 @@ function MCKpiCard({ label, value, icon: Icon, sub, color }: {
   )
 }
 
-function AIAnalysisSection({ aiState, onGenerate }: { aiState: "idle" | "loading" | "ready"; onGenerate: () => void }) {
+function AIAnalysisSection({
+  aiState, analysis, error, onGenerate,
+}: {
+  aiState:    "idle" | "loading" | "ready"
+  analysis:   SimAnalysisResult | null
+  error:      string | null
+  onGenerate: () => void
+}) {
+  const findingDot: Record<string, string> = {
+    success: "bg-success",
+    warning: "bg-warning",
+    danger:  "bg-destructive",
+    info:    "bg-primary",
+  }
+  const findingText: Record<string, string> = {
+    success: "text-success",
+    warning: "text-warning",
+    danger:  "text-destructive",
+    info:    "text-foreground",
+  }
+  const riskBadge = analysis ? {
+    low:    <Badge variant="stable"   className="text-2xs">Low Risk</Badge>,
+    medium: <Badge variant="warning"  className="text-2xs">Medium Risk</Badge>,
+    high:   <Badge variant="unstable" className="text-2xs">High Risk</Badge>,
+  }[analysis.risk_level] : null
+
   return (
     <Card className="border-border">
       <CardHeader>
         <div className="flex items-start justify-between w-full">
           <div>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-warning" />AI Analysis</CardTitle>
-            <CardDescription>Claude-powered interpretation of simulation results — plain-language insights and recommendations</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-warning" />AI Analysis
+            </CardTitle>
+            <CardDescription>Groq-powered interpretation of simulation results — plain-language insights and recommendations</CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {aiState === "ready"   && <Badge variant="stable"  className="text-2xs">Analysis Ready</Badge>}
             {aiState === "loading" && <Badge variant="warning" className="text-2xs"><span className="w-1.5 h-1.5 bg-warning inline-block mr-1 animate-pulse" />Generating…</Badge>}
-            <Button variant={aiState === "ready" ? "outline" : "default"} size="sm" onClick={onGenerate} disabled={aiState === "loading"} className="gap-1.5">
-              {aiState === "loading" ? <><span className="w-3 h-3 border border-primary-foreground/40 border-t-primary-foreground animate-spin shrink-0" />Generating…</>
-               : aiState === "ready" ? <><RotateCcw className="w-3.5 h-3.5" />Regenerate</>
-               : <><Sparkles className="w-3.5 h-3.5" />Generate Analysis</>}
+            <Button variant={aiState === "ready" ? "outline" : "default"} size="sm" onClick={onGenerate}
+              disabled={aiState === "loading"} className="gap-1.5">
+              {aiState === "loading"
+                ? <><span className="w-3 h-3 border border-primary-foreground/40 border-t-primary-foreground animate-spin shrink-0" />Generating…</>
+                : aiState === "ready"
+                  ? <><RotateCcw className="w-3.5 h-3.5" />Regenerate</>
+                  : <><Sparkles className="w-3.5 h-3.5" />Generate Analysis</>}
             </Button>
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="p-0">
+        {/* ── Idle ── */}
         {aiState === "idle" && (
           <div className="flex flex-col items-center justify-center py-12 gap-3 border-t border-border bg-muted/10">
             <div className="w-10 h-10 border border-border bg-card flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-muted-foreground/40" strokeWidth={1.5} />
             </div>
             <p className="text-sm font-medium text-muted-foreground">No analysis generated yet</p>
-            <p className="text-xs text-muted-foreground/70 text-center max-w-sm">Click <strong>Generate Analysis</strong> to get a plain-language breakdown of your simulation results, key findings, and actionable recommendations.</p>
-            <Button size="sm" onClick={onGenerate} className="gap-1.5 mt-1"><Sparkles className="w-3.5 h-3.5" />Generate Analysis</Button>
+            {error && (
+              <p className="text-xs text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{error}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground/70 text-center max-w-sm">
+              Click <strong>Generate Analysis</strong> to get a plain-language breakdown of your simulation results, key findings, and actionable recommendations.
+            </p>
+            <Button size="sm" onClick={onGenerate} className="gap-1.5 mt-1">
+              <Sparkles className="w-3.5 h-3.5" />Generate Analysis
+            </Button>
           </div>
         )}
+
+        {/* ── Loading skeleton ── */}
         {aiState === "loading" && (
           <div className="border-t border-border p-4 flex flex-col gap-4">
-            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-muted animate-pulse" /><div className="h-3 w-32 bg-muted animate-pulse" /></div>
-            <div className="flex flex-col gap-2"><div className="h-3 w-full bg-muted animate-pulse" /><div className="h-3 w-[92%] bg-muted animate-pulse" /><div className="h-3 w-[78%] bg-muted animate-pulse" /></div>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 bg-muted animate-pulse" />
+              <div className="h-3 w-32 bg-muted animate-pulse" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="h-3 w-full bg-muted animate-pulse" />
+              <div className="h-3 w-[92%] bg-muted animate-pulse" />
+              <div className="h-3 w-[78%] bg-muted animate-pulse" />
+            </div>
             <Separator />
-            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-muted animate-pulse" /><div className="h-3 w-28 bg-muted animate-pulse" /></div>
-            <div className="flex flex-col gap-2">{[85, 70, 90, 60].map(w => (<div key={w} className="flex items-start gap-2"><div className="w-1.5 h-1.5 bg-muted animate-pulse mt-1.5 shrink-0" /><div className="h-3 bg-muted animate-pulse" style={{ width: `${w}%` }} /></div>))}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-warning inline-block animate-pulse" />Analyzing simulation parameters and results…</p>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 bg-muted animate-pulse" />
+              <div className="h-3 w-28 bg-muted animate-pulse" />
+            </div>
+            {[85, 70, 90, 60].map(w => (
+              <div key={w} className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-muted animate-pulse mt-1.5 shrink-0" />
+                <div className="h-3 bg-muted animate-pulse" style={{ width: `${w}%` }} />
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-warning inline-block animate-pulse" />
+              Analyzing simulation parameters and results with Groq LLaMA…
+            </p>
           </div>
         )}
-        {aiState === "ready" && (
+
+        {/* ── Real analysis ── */}
+        {aiState === "ready" && analysis && (
           <div className="border-t border-border divide-y divide-border">
+
+            {/* Summary */}
             <div className="p-4 flex flex-col gap-2">
-              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Activity className="w-3.5 h-3.5" />Summary</h3>
-              <div className="h-3 w-full bg-muted/60" /><div className="h-3 w-[88%] bg-muted/60" /><div className="h-3 w-[74%] bg-muted/60" />
-              <p className="text-xs text-muted-foreground italic mt-1">AI-generated summary will appear here once the Claude API is connected.</p>
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Activity className="w-3.5 h-3.5" />Summary
+              </h3>
+              <p className="text-xs text-foreground leading-relaxed">{analysis.summary}</p>
             </div>
+
+            {/* Key Findings */}
             <div className="p-4 flex flex-col gap-2.5">
-              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Lightbulb className="w-3.5 h-3.5" />Key Findings</h3>
-              {[{ color: "bg-success", label: "Queue stability assessment based on ρ value" },{ color: "bg-warning", label: "Overflow risk analysis across all replications" },{ color: "bg-primary", label: "Service time distribution interpretation" },{ color: "bg-muted-foreground", label: "False positive impact on quality metrics" }].map(({ color, label }) => (
-                <div key={label} className="flex items-start gap-2.5">
-                  <span className={`w-1.5 h-1.5 ${color} shrink-0 mt-1.5`} />
-                  <div className="flex-1 flex flex-col gap-1"><div className="h-2.5 bg-muted/60 w-full" /><p className="text-2xs text-muted-foreground italic">{label}</p></div>
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Lightbulb className="w-3.5 h-3.5" />Key Findings
+              </h3>
+              {analysis.findings.map((f, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className={`w-1.5 h-1.5 ${findingDot[f.color] ?? "bg-muted"} shrink-0 mt-1.5`} />
+                  <p className={`text-xs leading-relaxed ${findingText[f.color] ?? "text-foreground"}`}>{f.text}</p>
                 </div>
               ))}
             </div>
+
+            {/* Recommendations */}
             <div className="p-4 flex flex-col gap-2.5">
-              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><ListChecks className="w-3.5 h-3.5" />Recommendations</h3>
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ListChecks className="w-3.5 h-3.5" />Recommendations
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[{ icon: TrendingUp, label: "Throughput Optimization", desc: "Parameter tuning suggestions to improve scanner utilization" },{ icon: ShieldAlert, label: "Risk Mitigation", desc: "Actions to reduce overflow probability and queue buildup" },{ icon: Cpu, label: "Capacity Planning", desc: "Staffing and equipment recommendations based on λ/µ ratio" }].map(({ icon: Icon, label, desc }) => (
-                  <div key={label} className="border border-border p-3 bg-muted/10 flex flex-col gap-1.5">
-                    <div className="flex items-center gap-1.5"><Icon className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.5} /><span className="text-xs font-semibold text-foreground">{label}</span></div>
-                    <div className="h-2.5 bg-muted/60 w-full" /><div className="h-2.5 bg-muted/60 w-[80%]" />
-                    <p className="text-2xs text-muted-foreground italic mt-0.5">{desc}</p>
-                  </div>
-                ))}
+                {analysis.recommendations.map((r, i) => {
+                  const icons = [TrendingUp, ShieldAlert, Cpu]
+                  const Icon  = icons[i % icons.length]
+                  return (
+                    <div key={i} className="border border-border p-3 bg-muted/10 flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                        <span className="text-xs font-semibold text-foreground">{r.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{r.description}</p>
+                    </div>
+                  )
+                })}
               </div>
             </div>
-            <div className="px-4 py-2.5 bg-muted/20 flex items-center justify-between">
-              <div className="flex items-center gap-2"><ShieldAlert className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.5} /><span className="text-xs text-muted-foreground">Overall Risk Level</span><div className="h-2.5 w-20 bg-muted/70" /></div>
-              <p className="text-2xs text-muted-foreground italic">Powered by Claude · Analysis reflects current run parameters only</p>
+
+            {/* Risk footer */}
+            <div className="px-4 py-2.5 bg-muted/20 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                <span className="text-xs text-muted-foreground">Overall Risk:</span>
+                {riskBadge}
+                <span className="text-xs text-muted-foreground">— {analysis.risk_rationale}</span>
+              </div>
+              <p className="text-2xs text-muted-foreground italic">Powered by Groq LLaMA 3.3 70B · reflects current run only</p>
             </div>
           </div>
         )}

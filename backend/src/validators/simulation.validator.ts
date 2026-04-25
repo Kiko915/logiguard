@@ -46,5 +46,43 @@ export const getSimulationResultsQuerySchema = z.object({
   per_page: z.coerce.number().int().min(1).max(50).default(10),
 });
 
+// ─── Simulation Analysis (Groq) ───────────────────────────────────────────────
+const theoreticalSchema = z.object({
+  rho:       z.number(),
+  is_stable: z.boolean(),
+  L:         z.number().optional(),
+  Lq:        z.number().optional(),
+  W:         z.number().optional(),
+  Wq:        z.number().optional(),
+  Pq:        z.number().optional(),
+  P0:        z.number().optional(),
+});
+
+const monteCarloSchema = z.object({
+  overflow_probability:    z.number(),
+  avg_queue_length:        z.number(),
+  avg_waiting_time_s:      z.number(),
+  avg_utilization:         z.number(),
+  avg_throughput:          z.number(),
+  avg_false_positive_rate: z.number(),
+  replications_run:        z.number(),
+});
+
+export const analyzeSimulationSchema = z.object({
+  model_type: z.enum(["mm1", "mmc"]),
+  parameters: z.object({
+    arrival_rate:             z.number(),
+    service_rate:             z.number(),
+    defect_rate:              z.number(),
+    shift_hours:              z.number(),
+    replications:             z.number(),
+    queue_overflow_threshold: z.number(),
+    servers:                  z.number().optional(),
+  }),
+  theoretical: theoreticalSchema,
+  monte_carlo: monteCarloSchema,
+});
+
 export type RunSimulationInput = z.infer<typeof runSimulationSchema>;
 export type GetSimulationResultsQuery = z.infer<typeof getSimulationResultsQuerySchema>;
+export type AnalyzeSimulationInput = z.infer<typeof analyzeSimulationSchema>;

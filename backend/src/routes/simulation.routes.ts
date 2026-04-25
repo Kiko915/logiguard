@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { SimulationService } from "../services/simulation.service.js";
+import { GroqService } from "../services/groq.service.js";
 import { SimulationRepository } from "../repositories/simulation.repository.js";
 import { ScanLogRepository } from "../repositories/scan-log.repository.js";
 import {
   runSimulationSchema,
   getSimulationResultsQuerySchema,
+  analyzeSimulationSchema,
 } from "../validators/simulation.validator.js";
 import { validateBody, validateQuery } from "../middleware/validate.middleware.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
@@ -103,6 +105,19 @@ router.get("/results/:id", authMiddleware, async (c) => {
   const result = await simRepo.findById(id);
 
   const body: ApiSuccess<typeof result> = { success: true, data: result };
+  return c.json(body);
+});
+
+// ─── POST /simulation/analyze ──────────────────────────────────────────────────
+// Sends simulation results to Groq for plain-language interpretation.
+router.post("/analyze", authMiddleware, async (c) => {
+  const validated = await validateBody(c, analyzeSimulationSchema);
+  if (validated instanceof Response) return validated;
+
+  const groq = new GroqService();
+  const analysis = await groq.analyzeSimulation(validated.data);
+
+  const body: ApiSuccess<typeof analysis> = { success: true, data: analysis };
   return c.json(body);
 });
 
