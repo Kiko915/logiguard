@@ -292,8 +292,9 @@ export class SimulationService {
 
   private buildHistogram(values: number[], bins: number): number[] {
     if (values.length === 0) return new Array(bins).fill(0);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    // Avoid Math.min/max spread — call stack overflow on large arrays
+    let min = values[0], max = values[0];
+    for (const v of values) { if (v < min) min = v; if (v > max) max = v; }
     const binWidth = (max - min) / bins || 1;
     const histogram = new Array(bins).fill(0);
 
