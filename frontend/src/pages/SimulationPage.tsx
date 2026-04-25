@@ -431,6 +431,9 @@ export function SimulationPage() {
   // ── Run handler — M/M/1 calls backend, M/M/c runs client-side ─────────────
   const handleRun = useCallback(async () => {
     setIsRunning(true)
+    // Yield to React so it can re-render the "Running…" state before any
+    // synchronous blocking work starts (M/M/c DES runs on the main thread)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
     try {
       if (modelType === "mmc") {
         // Multi-server DES runs in-browser (backend has no M/M/c engine)
