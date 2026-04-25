@@ -261,6 +261,7 @@ function aggregateReplications(
   let overflows = 0, sumQ = 0, sumWait = 0, sumThroughput = 0, sumFP = 0
   const allServiceTimes: number[] = []
   const mid = Math.floor(n / 2)
+  let queueOverTime: { t: string; q: number }[] = []
 
   reps.forEach((r, i) => {
     if (r.overflowed) overflows++
@@ -271,14 +272,13 @@ function aggregateReplications(
     allServiceTimes.push(...r.serviceTimes.slice(0, 50))
     if (i === mid) {
       const step = Math.max(1, Math.floor(r.queueHistory.length / 80))
-      const qOverTime = r.queueHistory
+      queueOverTime = r.queueHistory
         .filter((_, j) => j % step === 0)
         .map(d => ({ t: (d.t / 3600).toFixed(2), q: d.q }))
-      Object.assign(result, { queue_over_time: qOverTime })
     }
   })
 
-  const result: MCResult = {
+  return {
     overflow_probability:    overflows / n,
     avg_queue_length:        sumQ / n,
     avg_waiting_time_s:      sumWait / n,
@@ -286,10 +286,9 @@ function aggregateReplications(
     avg_throughput:          sumThroughput / n,
     avg_false_positive_rate: sumFP / n,
     service_time_histogram:  buildHistogram(allServiceTimes, 16),
-    queue_over_time:         [],
+    queue_over_time:         queueOverTime,
     replications_run:        n,
   }
-  return result
 }
 
 // ─── Backend simulation result shape ──────────────────────────────────────────
