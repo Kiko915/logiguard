@@ -8,10 +8,10 @@ import {
   Search,
   SearchX,
   Download,
+  FileText,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
   SlidersHorizontal,
   X,
@@ -22,11 +22,14 @@ import {
   Cpu,
   AlertCircle,
   ShieldCheck,
+  CalendarDays,
+  Loader2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Table,
   TableBody,
@@ -36,6 +39,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -161,6 +166,14 @@ export function ScanLogsPage() {
   const [isExporting, setExporting]  = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [counts, setCounts]          = useState({ total: 0, good: 0, damaged: 0, empty: 0 })
+
+  // ── Report modal state ────────────────────────────────────────────────────
+  const [reportOpen,      setReportOpen]      = useState(false)
+  const [reportCoverage,  setReportCoverage]  = useState<"all" | "custom">("all")
+  const [reportFrom,      setReportFrom]      = useState("")
+  const [reportTo,        setReportTo]        = useState("")
+  const [isGenerating,    setGenerating]      = useState(false)
+  const [reportError,     setReportError]     = useState<string | null>(null)
 
   // Fetch KPI counts from stats endpoint (once on mount)
   useEffect(() => {
@@ -322,6 +335,253 @@ export function ScanLogsPage() {
     }
   }
 
+  // ── PDF Report Generator ──────────────────────────────────────────────────
+  async function generateReport() {
+    setGenerating(true)
+    setReportError(null)
+    try {
+      // 1. Fetch all matching logs
+      const allLogs: ScanLog[] = []
+      let exportPage = 1
+      const PER_PAGE = 100
+
+      while (true) {
+        const params = new URLSearchParams({ page: String(exportPage), per_page: String(PER_PAGE) })
+        if (reportCoverage === "custom" && reportFrom) params.set("from", new Date(reportFrom).toISOString())
+        if (reportCoverage === "custom" && reportTo)   params.set("to",   new Date(reportTo + "T23:59:59").toISOString())
+
+        const res  = await api.get<LogsResponse>(`/api/v1/scanner/logs?${params}`)
+        const docs = res.data ?? []
+
+        docs.forEach(doc => {
+          let reason: string | null = null
+          let issues: string[] = []
+          if (doc.metadata) {
+            try {
+              const p = JSON.parse(doc.metadata)
+              reason = typeof p.reason === "string" ? p.reason : null
+              issues = Array.isArray(p.issues) ? p.issues.map(String) : []
+            } catch { /* ignore */ }
+          }
+          allLogs.push({
+            id: doc.id, package_id: doc.package_id, status: doc.status,
+            confidence: doc.confidence * 100, scan_ms: doc.scan_time_ms,
+            tx_hash: null, scanned_at: doc.created_at, reason, issues,
+          })
+        })
+
+        const total = res.meta?.total ?? 0
+        if (allLogs.length >= total || docs.length < PER_PAGE) break
+        exportPage++
+      }
+
+      // 2. Derive summary counts from fetched data
+      const rptTotal   = allLogs.length
+      const rptGood    = allLogs.filter(l => l.status === "good").length
+      const rptDamaged = allLogs.filter(l => l.status === "damaged").length
+      const rptEmpty   = allLogs.filter(l => l.status === "empty").length
+
+      // 3. Fetch logo as base64
+      let logoBase64 = ""
+      try {
+        const logoRes  = await fetch("/branding/logiguard_wordmark.png")
+        const logoBuf  = await logoRes.arrayBuffer()
+        const binary   = Array.from(new Uint8Array(logoBuf)).map(b => String.fromCharCode(b)).join("")
+        logoBase64     = "data:image/png;base64," + btoa(binary)
+      } catch { /* skip logo if fetch fails */ }
+
+      // 4. Build PDF
+      const doc  = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+      const W    = doc.internal.pageSize.getWidth()
+      const H    = doc.internal.pageSize.getHeight()
+      const MARGIN = 14
+      const NAVY   = [15, 23, 42]   as [number,number,number]
+      const SLATE  = [71, 85, 105]  as [number,number,number]
+      const BORDER = [226, 232, 240] as [number,number,number]
+      const GREEN  = [22, 163, 74]  as [number,number,number]
+      const RED    = [220, 38, 38]  as [number,number,number]
+      const AMBER  = [217, 119, 6]  as [number,number,number]
+
+      // ── Header band ──
+      doc.setFillColor(...NAVY)
+      doc.rect(0, 0, W, 28, "F")
+
+      if (logoBase64) {
+        doc.addImage(logoBase64, "PNG", MARGIN, 6, 44, 14)
+      } else {
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(16)
+        doc.setTextColor(255, 255, 255)
+        doc.text("LOGIGUARD", MARGIN, 17)
+      }
+
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(148, 163, 184)
+      doc.text("Intelligent Package Inspection · Secured by Blockchain", MARGIN, 23)
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(10)
+      doc.setTextColor(255, 255, 255)
+      doc.text("SCAN INSPECTION REPORT", W - MARGIN, 13, { align: "right" })
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(7.5)
+      doc.setTextColor(148, 163, 184)
+      const generatedLine = `Generated: ${new Date().toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short" })}`
+      doc.text(generatedLine, W - MARGIN, 19, { align: "right" })
+
+      let y = 36
+
+      // ── Coverage line ──
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(8)
+      doc.setTextColor(...SLATE)
+      doc.text("COVERAGE", MARGIN, y)
+      doc.setFont("helvetica", "normal")
+      const coverageLabel = reportCoverage === "all"
+        ? "All Time"
+        : `${reportFrom || "—"}  →  ${reportTo || "—"}`
+      doc.text(coverageLabel, MARGIN + 22, y)
+
+      doc.setDrawColor(...BORDER)
+      doc.setLineWidth(0.3)
+      doc.line(MARGIN, y + 3, W - MARGIN, y + 3)
+      y += 10
+
+      // ── KPI summary boxes ──
+      const kpis = [
+        { label: "Total Scans", value: rptTotal.toLocaleString(), color: NAVY },
+        { label: "Good",        value: rptGood.toLocaleString(),    color: GREEN },
+        { label: "Damaged",     value: rptDamaged.toLocaleString(), color: RED },
+        { label: "Empty",       value: rptEmpty.toLocaleString(),   color: AMBER },
+      ]
+      const boxW = (W - MARGIN * 2 - 9) / 4
+      kpis.forEach((kpi, i) => {
+        const x = MARGIN + i * (boxW + 3)
+        doc.setFillColor(248, 250, 252)
+        doc.setDrawColor(...BORDER)
+        doc.setLineWidth(0.3)
+        doc.rect(x, y, boxW, 18, "FD")
+
+        doc.setFillColor(...kpi.color)
+        doc.rect(x, y, 2, 18, "F")
+
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(16)
+        doc.setTextColor(...kpi.color)
+        doc.text(kpi.value, x + boxW / 2, y + 11, { align: "center" })
+
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(7)
+        doc.setTextColor(...SLATE)
+        doc.text(kpi.label.toUpperCase(), x + boxW / 2, y + 16, { align: "center" })
+      })
+      y += 24
+
+      // ── Pass / defect rates ──
+      if (rptTotal > 0) {
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(7.5)
+        doc.setTextColor(...SLATE)
+        const rateText = [
+          `Pass Rate: ${((rptGood / rptTotal) * 100).toFixed(1)}%`,
+          `Defect Rate: ${((rptDamaged / rptTotal) * 100).toFixed(1)}%`,
+          `Empty Rate: ${((rptEmpty / rptTotal) * 100).toFixed(1)}%`,
+          `Records in report: ${rptTotal.toLocaleString()}`,
+        ].join("    ·    ")
+        doc.text(rateText, MARGIN, y)
+        y += 7
+      }
+
+      doc.setDrawColor(...BORDER)
+      doc.line(MARGIN, y, W - MARGIN, y)
+      y += 5
+
+      // ── Table section label ──
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(8)
+      doc.setTextColor(...NAVY)
+      doc.text("INSPECTION RECORDS", MARGIN, y)
+      y += 4
+
+      // ── Auto table ──
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        head: [["Log ID", "Package ID", "Status", "Confidence", "Scan Time", "Timestamp"]],
+        body: allLogs.map(log => {
+          const d = new Date(log.scanned_at)
+          return [
+            log.id.slice(0, 12) + "…",
+            log.package_id.slice(0, 14) + "…",
+            log.status.toUpperCase(),
+            log.confidence.toFixed(1) + "%",
+            (log.scan_ms / 1000).toFixed(2) + "s",
+            d.toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" }),
+          ]
+        }),
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
+          lineColor: BORDER,
+          lineWidth: 0.2,
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: NAVY,
+          textColor: [255, 255, 255],
+          fontSize: 7,
+          fontStyle: "bold",
+          halign: "left",
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 24 },
+          1: { cellWidth: 32 },
+          2: { cellWidth: 20, halign: "center" },
+          3: { cellWidth: 20, halign: "right" },
+          4: { cellWidth: 18, halign: "right" },
+          5: { cellWidth: "auto" },
+        },
+        didParseCell(data) {
+          if (data.section === "body" && data.column.index === 2) {
+            const v = String(data.cell.raw).toUpperCase()
+            if (v === "GOOD")    data.cell.styles.textColor = GREEN
+            if (v === "DAMAGED") data.cell.styles.textColor = RED
+            if (v === "EMPTY")   data.cell.styles.textColor = AMBER
+            data.cell.styles.fontStyle = "bold"
+          }
+        },
+        // Footer on every page
+        didDrawPage(data) {
+          const pageH = doc.internal.pageSize.getHeight()
+          doc.setFillColor(...NAVY)
+          doc.rect(0, pageH - 10, W, 10, "F")
+          doc.setFont("helvetica", "normal")
+          doc.setFontSize(6.5)
+          doc.setTextColor(148, 163, 184)
+          doc.text("LogiGuard · Confidential — For Internal Use Only", MARGIN, pageH - 4)
+          doc.text(
+            `Page ${data.pageNumber}`,
+            W - MARGIN, pageH - 4, { align: "right" }
+          )
+        },
+      })
+
+      // 5. Save
+      const suffix = reportCoverage === "custom" && reportFrom ? `-${reportFrom}` : "-all-time"
+      doc.save(`logiguard-report${suffix}-${new Date().toISOString().slice(0, 10)}.pdf`)
+
+      setReportOpen(false)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Report generation failed"
+      setReportError(msg)
+      console.error("[GenerateReport]", err)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   // ── Derived data ──────────────────────────────────────────────────────────
 
   // Client-side search within the current fetched page
@@ -359,16 +619,27 @@ export function ScanLogsPage() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={exportCsv}
-            disabled={isExporting}
-          >
-            <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-pulse" : ""}`} />
-            {isExporting ? "Exporting…" : "Export CSV"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={exportCsv}
+              disabled={isExporting}
+            >
+              <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-pulse" : ""}`} />
+              {isExporting ? "Exporting…" : "Export CSV"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => { setReportOpen(true); setReportError(null) }}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Export Report
+            </Button>
+          </div>
           {exportError && (
             <span className="text-2xs text-destructive">{exportError}</span>
           )}
@@ -713,6 +984,144 @@ export function ScanLogsPage() {
           Blockchain-anchored record
         </span>
       </div>
+
+      {/* ── Report Export Modal ─────────────────────────────────────────────── */}
+      {reportOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          onClick={() => !isGenerating && setReportOpen(false)}
+        >
+          <div
+            className="bg-card border border-border w-full max-w-md mx-4 shadow-sm"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                <span className="text-sm font-semibold">Export Inspection Report</span>
+              </div>
+              {!isGenerating && (
+                <button
+                  onClick={() => setReportOpen(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Modal body */}
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <p className="text-xs text-muted-foreground">
+                Generate a branded PDF report of scan inspection records. Choose the date coverage below.
+              </p>
+
+              {/* Coverage selector */}
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Report Coverage
+                </Label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setReportCoverage("all")}
+                    className={[
+                      "flex-1 h-8 text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+                      reportCoverage === "all"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <ScrollText className="w-3 h-3" />
+                    All Time
+                  </button>
+                  <button
+                    onClick={() => setReportCoverage("custom")}
+                    className={[
+                      "flex-1 h-8 text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+                      reportCoverage === "custom"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <CalendarDays className="w-3 h-3" />
+                    Custom Range
+                  </button>
+                </div>
+              </div>
+
+              {/* Date range inputs */}
+              {reportCoverage === "custom" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="rpt-from" className="text-xs text-muted-foreground">From</Label>
+                    <Input
+                      id="rpt-from"
+                      type="date"
+                      value={reportFrom}
+                      onChange={e => setReportFrom(e.target.value)}
+                      max={reportTo || undefined}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="rpt-to" className="text-xs text-muted-foreground">To</Label>
+                    <Input
+                      id="rpt-to"
+                      type="date"
+                      value={reportTo}
+                      onChange={e => setReportTo(e.target.value)}
+                      min={reportFrom || undefined}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Info note */}
+              <div className="bg-muted/40 border border-border px-3 py-2 flex items-start gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-2xs text-muted-foreground leading-relaxed">
+                  The report will include all scan records for the selected period with KPI summary,
+                  confidence scores, and status breakdown. Output format: <strong>PDF (A4)</strong>.
+                </p>
+              </div>
+
+              {/* Error */}
+              {reportError && (
+                <p className="text-xs text-destructive flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {reportError}
+                </p>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/20">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReportOpen(false)}
+                disabled={isGenerating}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={generateReport}
+                disabled={isGenerating || (reportCoverage === "custom" && !reportFrom && !reportTo)}
+              >
+                {isGenerating
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Generating…</>
+                  : <><FileText className="w-3.5 h-3.5" />Generate PDF</>
+                }
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
