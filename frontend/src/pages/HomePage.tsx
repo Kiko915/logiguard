@@ -16,7 +16,17 @@ import {
   Boxes,
   Activity,
   BarChart3,
+  FileText,
+  CalendarDays,
+  ScrollText,
+  X,
+  AlertCircle,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import { DashboardSkeleton } from "@/pages/DashboardSkeleton"
 import {
   AreaChart,
@@ -294,6 +304,232 @@ export function HomePage() {
     ]
   }, [liveStats, total, derivedMu])
 
+  // ── Report modal state ────────────────────────────────────────────────────
+  const [reportOpen,     setReportOpen]     = useState(false)
+  const [reportCoverage, setReportCoverage] = useState<"all" | "custom">("all")
+  const [reportFrom,     setReportFrom]     = useState("")
+  const [reportTo,       setReportTo]       = useState("")
+  const [isGenerating,   setGenerating]     = useState(false)
+  const [reportError,    setReportError]    = useState<string | null>(null)
+
+  async function generateReport() {
+    setGenerating(true)
+    setReportError(null)
+    try {
+      // Fetch all matching logs page by page
+      interface LogDoc {
+        id: string; package_id: string; status: "good"|"damaged"|"empty"
+        confidence: number; scan_time_ms: number; created_at: string
+      }
+      interface LogsResp { data: LogDoc[]; meta?: { total?: number } }
+
+      const allLogs: LogDoc[] = []
+      let pg = 1
+      while (true) {
+        const params = new URLSearchParams({ page: String(pg), per_page: "100" })
+        if (reportCoverage === "custom" && reportFrom)
+          params.set("from", new Date(reportFrom).toISOString())
+        if (reportCoverage === "custom" && reportTo)
+          params.set("to", new Date(reportTo + "T23:59:59").toISOString())
+
+        const res  = await api.get<LogsResp>(`/api/v1/scanner/logs?${params}`)
+        const docs = res.data ?? []
+        allLogs.push(...docs)
+        const rTotal = res.meta?.total ?? 0
+        if (allLogs.length >= rTotal || docs.length < 100) break
+        pg++
+      }
+
+      const rTotal   = allLogs.length
+      const rGood    = allLogs.filter(l => l.status === "good").length
+      const rDamaged = allLogs.filter(l => l.status === "damaged").length
+      const rEmpty   = allLogs.filter(l => l.status === "empty").length
+
+      // Fetch logo as base64
+      let logoBase64 = ""
+      try {
+        const r = await fetch("/branding/logiguard_wordmark.png")
+        const buf = await r.arrayBuffer()
+        logoBase64 = "data:image/png;base64," +
+          btoa(Array.from(new Uint8Array(buf)).map(b => String.fromCharCode(b)).join(""))
+      } catch { /* skip */ }
+
+      const doc    = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+      const W      = doc.internal.pageSize.getWidth()
+      const MARGIN = 14
+      const NAVY   = [15, 23, 42]    as [number,number,number]
+      const SLATE  = [71, 85, 105]   as [number,number,number]
+      const BORDER = [226, 232, 240] as [number,number,number]
+      const GREEN  = [22, 163, 74]   as [number,number,number]
+      const RED    = [220, 38, 38]   as [number,number,number]
+      const AMBER  = [217, 119, 6]   as [number,number,number]
+
+      // Header band
+      doc.setFillColor(...NAVY)
+      doc.rect(0, 0, W, 28, "F")
+      if (logoBase64) {
+        doc.addImage(logoBase64, "PNG", MARGIN, 6, 44, 14)
+      } else {
+        doc.setFont("helvetica", "bold").setFontSize(16).setTextColor(255,255,255)
+        doc.text("LOGIGUARD", MARGIN, 17)
+      }
+      doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(148,163,184)
+      doc.text("Intelligent Package Inspection · Secured by Blockchain", MARGIN, 23)
+      doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(255,255,255)
+      doc.text("SYSTEM OVERVIEW REPORT", W - MARGIN, 13, { align: "right" })
+      doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(148,163,184)
+      doc.text(
+        `Generated: ${new Date().toLocaleString("en-PH", { dateStyle: "long", timeStyle: "short" })}`,
+        W - MARGIN, 19, { align: "right" }
+      )
+
+      let y = 36
+
+      // Coverage line
+      doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...SLATE)
+      doc.text("COVERAGE", MARGIN, y)
+      doc.setFont("helvetica", "normal")
+      doc.text(
+        reportCoverage === "all" ? "All Time" : `${reportFrom || "—"}  →  ${reportTo || "—"}`,
+        MARGIN + 22, y
+      )
+      doc.setDrawColor(...BORDER).setLineWidth(0.3)
+      doc.line(MARGIN, y + 3, W - MARGIN, y + 3)
+      y += 10
+
+      // KPI boxes
+      const kpis = [
+        { label: "Total Scans", value: rTotal.toLocaleString(),   color: NAVY  },
+        { label: "Good",        value: rGood.toLocaleString(),    color: GREEN },
+        { label: "Damaged",     value: rDamaged.toLocaleString(), color: RED   },
+        { label: "Empty",       value: rEmpty.toLocaleString(),   color: AMBER },
+      ]
+      const boxW = (W - MARGIN * 2 - 9) / 4
+      kpis.forEach((kpi, i) => {
+        const x = MARGIN + i * (boxW + 3)
+        doc.setFillColor(248, 250, 252).setDrawColor(...BORDER).setLineWidth(0.3)
+        doc.rect(x, y, boxW, 18, "FD")
+        doc.setFillColor(...kpi.color).rect(x, y, 2, 18, "F")
+        doc.setFont("helvetica", "bold").setFontSize(16).setTextColor(...kpi.color)
+        doc.text(kpi.value, x + boxW / 2, y + 11, { align: "center" })
+        doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(...SLATE)
+        doc.text(kpi.label.toUpperCase(), x + boxW / 2, y + 16, { align: "center" })
+      })
+      y += 24
+
+      // Rates row
+      if (rTotal > 0) {
+        doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...SLATE)
+        doc.text([
+          `Pass Rate: ${((rGood / rTotal) * 100).toFixed(1)}%`,
+          `Defect Rate: ${((rDamaged / rTotal) * 100).toFixed(1)}%`,
+          `Empty Rate: ${((rEmpty / rTotal) * 100).toFixed(1)}%`,
+          `Records: ${rTotal.toLocaleString()}`,
+        ].join("    ·    "), MARGIN, y)
+        y += 7
+      }
+
+      // M/M/1 metrics section (if available)
+      if (mm1) {
+        doc.setDrawColor(...BORDER).line(MARGIN, y, W - MARGIN, y)
+        y += 5
+        doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...NAVY)
+        doc.text("M/M/1 QUEUE METRICS", MARGIN, y)
+        y += 5
+
+        const metrics = [
+          { label: "Arrival Rate (λ)",       value: `${Math.round(mm1.lambda)}/hr` },
+          { label: "Service Rate (µ)",        value: `${Math.round(mm1.mu)}/hr` },
+          { label: "Utilization (ρ)",         value: mm1.rho.toFixed(3) },
+          { label: "Avg Items in System (L)", value: isFinite(mm1.L)    ? mm1.L.toFixed(3)    : "∞" },
+          { label: "Avg Wait Time (Wq)",      value: isFinite(mm1.Wq_s) ? `${mm1.Wq_s.toFixed(2)}s` : "∞" },
+          { label: "Queue Stability",         value: mm1.stable ? "Stable" : "UNSTABLE" },
+        ]
+        const mW = (W - MARGIN * 2 - 5) / 3
+        metrics.forEach((m, i) => {
+          const col = i % 3, row = Math.floor(i / 3)
+          const mx  = MARGIN + col * (mW + 2.5)
+          const my  = y + row * 12
+          doc.setFillColor(248, 250, 252).setDrawColor(...BORDER).setLineWidth(0.2)
+          doc.rect(mx, my, mW, 10, "FD")
+          doc.setFont("helvetica", "normal").setFontSize(6.5).setTextColor(...SLATE)
+          doc.text(m.label, mx + 3, my + 4)
+          const isUnstable = m.value === "UNSTABLE"
+          if (isUnstable) doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...RED)
+          else            doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...NAVY)
+          doc.text(m.value, mx + mW - 3, my + 7.5, { align: "right" })
+        })
+        y += Math.ceil(metrics.length / 3) * 12 + 5
+      }
+
+      // Scan log table
+      doc.setDrawColor(...BORDER).line(MARGIN, y, W - MARGIN, y)
+      y += 5
+      doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...NAVY)
+      doc.text("INSPECTION RECORDS", MARGIN, y)
+      y += 4
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        head: [["Log ID", "Package ID", "Status", "Confidence", "Scan Time", "Timestamp"]],
+        body: allLogs.map(log => {
+          const d = new Date(log.created_at)
+          return [
+            log.id.slice(0, 12) + "…",
+            log.package_id.slice(0, 14) + "…",
+            log.status.toUpperCase(),
+            (log.confidence * 100).toFixed(1) + "%",
+            (log.scan_time_ms / 1000).toFixed(2) + "s",
+            d.toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" }),
+          ]
+        }),
+        styles: {
+          fontSize: 7.5, font: "helvetica",
+          cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
+          lineColor: BORDER, lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: NAVY, textColor: [255,255,255],
+          fontSize: 7, fontStyle: "bold", halign: "left",
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 24 }, 1: { cellWidth: 32 },
+          2: { cellWidth: 20, halign: "center" },
+          3: { cellWidth: 20, halign: "right" },
+          4: { cellWidth: 18, halign: "right" },
+          5: { cellWidth: "auto" },
+        },
+        didParseCell(data) {
+          if (data.section === "body" && data.column.index === 2) {
+            const v = String(data.cell.raw)
+            if (v === "GOOD")    { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = "bold" }
+            if (v === "DAMAGED") { data.cell.styles.textColor = RED;   data.cell.styles.fontStyle = "bold" }
+            if (v === "EMPTY")   { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = "bold" }
+          }
+        },
+        didDrawPage(data) {
+          const pH = doc.internal.pageSize.getHeight()
+          doc.setFillColor(...NAVY).rect(0, pH - 10, W, 10, "F")
+          doc.setFont("helvetica", "normal").setFontSize(6.5).setTextColor(148, 163, 184)
+          doc.text("LogiGuard · Confidential — For Internal Use Only", MARGIN, pH - 4)
+          doc.text(`Page ${data.pageNumber}`, W - MARGIN, pH - 4, { align: "right" })
+        },
+      })
+
+      const suffix = reportCoverage === "custom" && reportFrom ? `-${reportFrom}` : "-all-time"
+      doc.save(`logiguard-overview-report${suffix}-${new Date().toISOString().slice(0, 10)}.pdf`)
+      setReportOpen(false)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Report generation failed"
+      setReportError(msg)
+      console.error("[GenerateReport]", err)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   if (loading) return <DashboardSkeleton />
 
   return (
@@ -308,7 +544,10 @@ export function HomePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">Export Report</Button>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setReportOpen(true); setReportError(null) }}>
+            <FileText className="w-3.5 h-3.5" />
+            Export Report
+          </Button>
           <Button size="sm" onClick={() => navigate("/live-scanner")}>
             <ScanLine className="w-3.5 h-3.5" />
             Start Scan
@@ -674,6 +913,132 @@ export function HomePage() {
         <InfoTile icon={Link}     label="Blockchain" value="Ganache Testnet"  sub="Chain ID 1337 · Port 8545"      />
         <InfoTile icon={Database} label="Database"   value="Appwrite"         sub="Documents DB · Collections ×3"  />
       </div>
+
+      {/* ── Report Export Modal ─────────────────────────────────────────────── */}
+      {reportOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          onClick={() => !isGenerating && setReportOpen(false)}
+        >
+          <div
+            className="bg-card border border-border w-full max-w-md mx-4 shadow-sm"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                <span className="text-sm font-semibold">Export System Overview Report</span>
+              </div>
+              {!isGenerating && (
+                <button onClick={() => setReportOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <p className="text-xs text-muted-foreground">
+                Generate a branded PDF report of the system overview including KPI stats, M/M/1 queue metrics, and full scan inspection records.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Report Coverage
+                </Label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setReportCoverage("all")}
+                    className={[
+                      "flex-1 h-8 text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+                      reportCoverage === "all"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <ScrollText className="w-3 h-3" />
+                    All Time
+                  </button>
+                  <button
+                    onClick={() => setReportCoverage("custom")}
+                    className={[
+                      "flex-1 h-8 text-xs border font-medium transition-colors flex items-center justify-center gap-1.5",
+                      reportCoverage === "custom"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:bg-accent hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <CalendarDays className="w-3 h-3" />
+                    Custom Range
+                  </button>
+                </div>
+              </div>
+
+              {reportCoverage === "custom" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="hp-rpt-from" className="text-xs text-muted-foreground">From</Label>
+                    <input
+                      id="hp-rpt-from"
+                      type="date"
+                      value={reportFrom}
+                      onChange={e => setReportFrom(e.target.value)}
+                      max={reportTo || undefined}
+                      className="h-8 text-xs border border-border bg-background px-2 w-full focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="hp-rpt-to" className="text-xs text-muted-foreground">To</Label>
+                    <input
+                      id="hp-rpt-to"
+                      type="date"
+                      value={reportTo}
+                      onChange={e => setReportTo(e.target.value)}
+                      min={reportFrom || undefined}
+                      className="h-8 text-xs border border-border bg-background px-2 w-full focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-muted/40 border border-border px-3 py-2 flex items-start gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-2xs text-muted-foreground leading-relaxed">
+                  Includes KPI summary, M/M/1 queue metrics, and a complete scan log table for the selected period. Output format: <strong>PDF (A4)</strong>.
+                </p>
+              </div>
+
+              {reportError && (
+                <p className="text-xs text-destructive flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {reportError}
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-muted/20">
+              <Button variant="outline" size="sm" onClick={() => setReportOpen(false)} disabled={isGenerating}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={generateReport}
+                disabled={isGenerating || (reportCoverage === "custom" && !reportFrom && !reportTo)}
+              >
+                {isGenerating
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Generating…</>
+                  : <><FileText className="w-3.5 h-3.5" />Generate PDF</>
+                }
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
