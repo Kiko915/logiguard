@@ -155,10 +155,12 @@ export function ScanLogsPage() {
   const [expandedRow,  setExpanded]   = useState<string | null>(null)
 
   // ── Remote data ───────────────────────────────────────────────────────────
-  const [logs,       setLogs]       = useState<ScanLog[]>([])
-  const [totalCount, setTotal]      = useState(0)
-  const [isLoading,  setLoading]    = useState(false)
-  const [counts, setCounts]         = useState({ total: 0, good: 0, damaged: 0, empty: 0 })
+  const [logs,        setLogs]       = useState<ScanLog[]>([])
+  const [totalCount,  setTotal]      = useState(0)
+  const [isLoading,   setLoading]    = useState(false)
+  const [isExporting, setExporting]  = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [counts, setCounts]          = useState({ total: 0, good: 0, damaged: 0, empty: 0 })
 
   // Fetch KPI counts from stats endpoint (once on mount)
   useEffect(() => {
@@ -217,6 +219,109 @@ export function ScanLogsPage() {
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
+  // ── CSV Export ────────────────────────────────────────────────────────────
+  async function exportCsv() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const allLogs: ScanLog[] = []
+      let exportPage = 1
+      const PER_PAGE = 100
+
+      while (true) {
+        const params = new URLSearchParams({
+          page:     String(exportPage),
+          per_page: String(PER_PAGE),
+          ...(statusFilter !== "all" && { status: statusFilter }),
+        })
+        const res = await api.get<LogsResponse>(`/api/v1/scanner/logs?${params}`)
+        const docs = res.data ?? []
+
+        const mapped: ScanLog[] = docs.map(doc => {
+          let reason: string | null = null
+          let issues: string[]      = []
+          if (doc.metadata) {
+            try {
+              const parsed = JSON.parse(doc.metadata)
+              reason = typeof parsed.reason === "string" ? parsed.reason : null
+              issues = Array.isArray(parsed.issues) ? parsed.issues.map(String) : []
+            } catch { /* ignore */ }
+          }
+          return {
+            id:         doc.id,
+            package_id: doc.package_id,
+            status:     doc.status,
+            confidence: doc.confidence * 100,
+            scan_ms:    doc.scan_time_ms,
+            tx_hash:    null,
+            scanned_at: doc.created_at,
+            reason,
+            issues,
+          }
+        })
+
+        allLogs.push(...mapped)
+        const total = res.meta?.total ?? 0
+        if (allLogs.length >= total || docs.length < PER_PAGE) break
+        exportPage++
+      }
+
+      function cell(v: string | number | null | undefined): string {
+        const s = v == null ? "" : String(v)
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s
+      }
+
+      const headers = [
+        "Log ID", "Package ID", "Status", "Confidence (%)", "Scan Time (ms)",
+        "Blockchain TX Hash", "Timestamp", "AI Reason", "AI Issues",
+        "Station", "Operator", "AI Model", "Inspection Depth",
+        "Weight (kg)", "Recommended Action",
+      ]
+
+      const rows = allLogs.map(log => {
+        const d = deriveDetails(log)
+        return [
+          log.id,
+          log.package_id,
+          log.status,
+          log.confidence.toFixed(2),
+          log.scan_ms,
+          log.tx_hash ?? "",
+          log.scanned_at,
+          log.reason ?? "",
+          log.issues.join("; "),
+          d.station,
+          d.operator,
+          d.model_version,
+          d.inspection_depth,
+          d.weight_kg.toFixed(2),
+          d.recommended_action,
+        ].map(cell).join(",")
+      })
+
+      const bom  = "﻿"
+      const csv  = bom + [headers.map(cell).join(","), ...rows].join("\n")
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement("a")
+      a.href     = url
+      const suffix = statusFilter !== "all" ? `-${statusFilter}` : ""
+      a.download = `scan-logs${suffix}-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed"
+      setExportError(msg)
+      console.error("[ExportCSV]", err)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // ── Derived data ──────────────────────────────────────────────────────────
 
   // Client-side search within the current fetched page
@@ -253,10 +358,21 @@ export function ScanLogsPage() {
             Complete audit trail — every package inspection recorded &amp; blockchain-verified
           </p>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Download className="w-3.5 h-3.5" />
-          Export CSV
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={exportCsv}
+            disabled={isExporting}
+          >
+            <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-pulse" : ""}`} />
+            {isExporting ? "Exporting…" : "Export CSV"}
+          </Button>
+          {exportError && (
+            <span className="text-2xs text-destructive">{exportError}</span>
+          )}
+        </div>
       </div>
 
       {/* ── KPI Summary ────────────────────────────────────────────────────── */}
